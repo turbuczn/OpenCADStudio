@@ -4903,7 +4903,7 @@ pub enum Message {
     /// Toolbar paragraph-alignment change.
     MTextAlign(mtext_editor::ParaAlign),
     /// Toolbar line-spacing change.
-    MTextLineSpacing(f32),
+    MTextLineSpacing(f64),
     /// Switch the editor body between raw code input (`false`) and the
     /// rendered preview (`true`).
     MTextShowPreview(bool),

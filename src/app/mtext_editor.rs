@@ -7,8 +7,8 @@
 
 use codec::entities::mtext::AttachmentPoint;
 use codec::entities::mtext_format::{
-    parse_mtext, MTextColor, MTextDocument, MTextFont, MTextParagraph, MTextSpan,
-    ParagraphProperties, SpanProperties, StackingData, StackingType,
+    parse_mtext, MTextDocument, MTextFont, MTextParagraph, MTextSpan, ParagraphProperties,
+    SpanProperties, StackingData, StackingType,
 };
 use codec::types::Vector3;
 use codec::{EntityType, Handle, MText};
@@ -131,6 +131,10 @@ pub struct MTextEditorState {
     pub doc: MTextDocument,
     /// Text height, edited as a string so partial input is allowed.
     pub height: String,
+    /// The height the editor opened with, saved exactly until the field is
+    /// edited, never re-read from the field's rounded text.
+    pub(super) height_opened: f64,
+    pub(super) height_dirty: bool,
     /// Text style name (entity field).
     pub style: String,
     /// The object font: the `\f`/`\F` that opens the source ("" = the style's).
@@ -153,7 +157,7 @@ pub struct MTextEditorState {
     /// Paragraph attachment / justification (entity field).
     pub attachment: AttachmentPoint,
     /// Line spacing factor (entity field).
-    pub line_spacing: f32,
+    pub line_spacing: f64,
     /// Whether the spacing is at least the factor or exactly it (entity
     /// field of an MTEXT and of a multileader's text).
     pub line_spacing_style: codec::entities::LineSpacingStyle,
@@ -256,6 +260,8 @@ impl MTextEditorState {
                 .trim_end_matches('0')
                 .trim_end_matches('.')
                 .to_string(),
+            height_opened: height,
+            height_dirty: false,
             style: "Standard".to_string(),
             font: String::new(),
             color_aci: 256,
@@ -326,6 +332,9 @@ impl MTextEditorState {
     }
 
     pub fn height_value(&self) -> f64 {
+        if !self.height_dirty && self.height_opened > 0.0 {
+            return self.height_opened;
+        }
         self.height
             .trim()
             .parse::<f64>()
@@ -366,54 +375,6 @@ impl MTextEditorState {
         (super::view::overlay::MTEXT_PREVIEW_EM_PX / unit.max(1e-6)).clamp(1e-4, 1e6)
     }
 
-    /// Fold the toolbar's global defaults (colour / oblique / char-spacing)
-    /// onto every span that does not already override them. The object font
-    /// and width are in the source itself.
-    fn apply_globals(&self, doc: &mut MTextDocument) {
-        let color = (self.color_aci != 256 && self.color_aci != 0)
-            .then(|| MTextColor::Index(self.color_aci));
-        let oblique = parse_non_default(&self.oblique, 0.0);
-        let tracking = parse_non_default(&self.char_space, 0.0);
-        for para in &mut doc.paragraphs {
-            for span in &mut para.spans {
-                let p = &mut span.properties;
-                if p.color.is_none() && p.color_rgb.is_none() {
-                    if let Some(ref c) = color {
-                        p.color = Some(c.clone());
-                    }
-                }
-                if p.oblique_angle.is_none() {
-                    p.oblique_angle = oblique;
-                }
-                if p.tracking.is_none() {
-                    p.tracking = tracking;
-                }
-            }
-        }
-    }
-
-    /// The committed / previewed MText value: the structured body with the
-    /// global toolbar defaults folded in, serialized by opencadcodec.
-    fn folded_value(&self) -> String {
-        let raw = self.content.text();
-        // Without a toolbar default to fold in, the value is the source as
-        // edited, byte for byte: nothing the user did not touch is rewritten.
-        if matches!(self.color_aci, 0 | 256)
-            && parse_non_default(&self.oblique, 0.0).is_none()
-            && parse_non_default(&self.char_space, 0.0).is_none()
-        {
-            return raw;
-        }
-        let mut doc = parse_mtext(&raw, true);
-        // parse_mtext drops a trailing empty paragraph; restore it so Enter at
-        // the end keeps its new (empty) line.
-        if content_has_trailing_break(&raw) {
-            doc.paragraphs.push(MTextParagraph::new());
-        }
-        self.apply_globals(&mut doc);
-        doc.to_mtext_string()
-    }
-
     /// Build the MText entity from the current editor state for preview/commit.
     ///
     /// Starts from the original entity (when editing one) so fields the toolbar
@@ -423,12 +384,12 @@ impl MTextEditorState {
     /// columns the moment it was edited.
     pub fn build_mtext(&self) -> MText {
         let mut mt = self.original.clone().unwrap_or_default();
-        mt.value = self.folded_value();
+        mt.value = self.content.text();
         mt.insertion_point = Vector3::new(self.pos.x, self.pos.y, self.pos.z);
         mt.height = self.height_value();
         mt.rectangle_width = self.rect_width;
         mt.attachment_point = self.attachment;
-        mt.line_spacing_factor = self.line_spacing as f64;
+        mt.line_spacing_factor = self.line_spacing;
         mt.line_spacing_style = self.line_spacing_style;
         mt.style = self.style.clone();
         mt.is_annotative = self.annotative;
@@ -478,17 +439,6 @@ impl MTextEditorState {
             }
         }
         mt
-    }
-}
-
-/// Parse a numeric field, returning `Some(v)` only when it differs from the
-/// control's default (so unchanged fields emit no inline code).
-fn parse_non_default(s: &str, default: f64) -> Option<f64> {
-    let v = s.trim().parse::<f64>().ok()?;
-    if (v - default).abs() < 1e-9 {
-        None
-    } else {
-        Some(v)
     }
 }
 
@@ -608,20 +558,6 @@ fn cells_to_doc(para0: &ParagraphProperties, cells: &[Cell]) -> MTextDocument {
     }
     doc.paragraphs.push(para);
     doc
-}
-
-/// True when the serialized MText value ends with a hard paragraph break —
-/// i.e. a trailing empty paragraph, which `parse_mtext` drops. `to_mtext_string`
-/// wraps multi-paragraph output in `{…}`, so strip a trailing `}` first, then
-/// require an ODD run of backslashes before a final `P` (an even run is an
-/// escaped literal `\\`, not the `\P` break code).
-fn content_has_trailing_break(raw: &str) -> bool {
-    let s = raw.trim_end();
-    let s = s.strip_suffix('}').unwrap_or(s);
-    match s.strip_suffix('P') {
-        Some(rest) => rest.chars().rev().take_while(|&c| c == '\\').count() % 2 == 1,
-        None => false,
-    }
 }
 
 /// Character class for double-click word selection: a word run, a whitespace
@@ -747,7 +683,7 @@ fn vertical_caret_target(
 
 fn seed_mtext_state(state: &mut MTextEditorState, m: &MText) {
     state.attachment = m.attachment_point;
-    state.line_spacing = m.line_spacing_factor as f32;
+    state.line_spacing = m.line_spacing_factor;
     state.line_spacing_style = m.line_spacing_style;
     let degrees = format!("{:.6}", m.rotation.to_degrees());
     state.rotation = degrees
@@ -808,7 +744,7 @@ impl super::OpenCADStudio {
                     state.field_host = raw_field::FieldHost::locate(doc, h, initial);
                 }
                 Some(EntityType::MultiLeader(ml)) => {
-                    state.line_spacing = ml.context.line_spacing_factor as f32;
+                    state.line_spacing = ml.context.line_spacing_factor;
                     state.line_spacing_style = ml.context.line_spacing_style;
                     // A multileader without a width keeps none until one is set.
                     state.keep_width = ml.context.text_width > 0.0;
@@ -963,19 +899,19 @@ impl super::OpenCADStudio {
             self.mtext_object_width(value);
             return;
         }
+        if matches!(field, "oblique" | "tracking") && !has_selection {
+            self.mtext_object_number(field, value, number);
+            return;
+        }
         if let Some(ed) = self.mtext_editor.as_mut() {
             // The field shows what is typed, an empty or half-typed value
             // included, with or without a selection (#2194).
             if has_selection {
                 ed.span_input = ed.sel.map(|sel| (sel, field, value));
-            } else {
+            } else if field == "height" {
                 ed.record_undo();
-                match field {
-                    "height" => ed.height = value,
-                    "oblique" => ed.oblique = value,
-                    "tracking" => ed.char_space = value,
-                    _ => {}
-                }
+                ed.height = value;
+                ed.height_dirty = true;
             }
         }
         match (has_selection, number) {
@@ -1263,15 +1199,14 @@ impl super::OpenCADStudio {
             // sets it; the text itself is not rewritten.
             ed.record_undo();
             ed.object_color = Some(color);
-        } else if let Some(ed) = self.mtext_editor.as_mut() {
+        } else if self.mtext_editor.is_some() {
             // A multileader's text or command-line input has no colour of
             // its own: the whole-text colour applies (ACI only; a true
             // colour with no selection falls back to ByLayer).
-            ed.record_undo();
-            ed.color_aci = match color {
+            self.mtext_object_color(match color {
                 C::Index(i) => i as u16,
                 _ => 256,
-            };
+            });
         }
         if let Some(ed) = self.mtext_editor.as_mut() {
             ed.color_picker_open = false;
@@ -1348,13 +1283,6 @@ mod cell_tests {
     fn rt(s: &str) -> String {
         let doc = parse_mtext(s, true);
         cells_to_doc(&doc_para0(&doc), &doc_to_cells(&doc)).to_mtext_string()
-    }
-    fn paras(s: &str) -> Vec<String> {
-        parse_mtext(s, true)
-            .paragraphs
-            .iter()
-            .map(|p| p.spans.iter().map(|sp| sp.text.clone()).collect())
-            .collect()
     }
     fn cells_of(s: &str) -> Vec<Cell> {
         doc_to_cells(&parse_mtext(s, true))
@@ -1467,50 +1395,4 @@ mod cell_tests {
         assert_eq!(f.name, "Arial");
         assert!(f.bold);
     }
-
-    // The global toolbar defaults fold onto the text as real span properties
-    // (replacing the old hand-built `\C;\Q;…` prefix), and survive
-    // serialization. The object font and width are in the source instead.
-    #[test]
-    fn global_defaults_fold_into_spans() {
-        let mut ed = MTextEditorState::new(DVec3::ZERO, "hello world", 2.5, None);
-        ed.color_aci = 1; // red
-        ed.oblique = "15".to_string();
-        let doc = parse_mtext(&ed.folded_value(), true);
-        assert_eq!(doc.to_plain_text(), "hello world");
-        let p = &doc.paragraphs[0].spans[0].properties;
-        assert_eq!(p.color, Some(MTextColor::Index(1)));
-        assert_eq!(p.oblique_angle, Some(15.0));
-    }
-
-    #[test]
-    fn trailing_break_detection() {
-        assert!(content_has_trailing_break("{ab\\P}")); // braced (to_mtext_string form)
-        assert!(content_has_trailing_break("ab\\P")); // unbraced
-        assert!(!content_has_trailing_break("{a\\Pb}")); // break in the middle
-        assert!(!content_has_trailing_break("ab"));
-        assert!(!content_has_trailing_break("{x\\\\P}")); // escaped literal backslash + P
-    }
-
-    #[test]
-    fn enter_at_end_survives_rebuild() {
-        // Type "ab", Enter at end -> cells [a, b, Break].
-        let cells = vec![
-            Cell::Char('a', SpanProperties::default()),
-            Cell::Char('b', SpanProperties::default()),
-            Cell::Break(ParagraphProperties::default(), false),
-        ];
-        let raw = cells_to_doc(&ParagraphProperties::default(), &cells).to_mtext_string();
-        // rebuild() re-parses + restores the trailing empty paragraph.
-        let mut d = parse_mtext(&raw, true);
-        if content_has_trailing_break(&raw) {
-            d.paragraphs.push(MTextParagraph::new());
-        }
-        assert_eq!(
-            doc_to_cells(&d).len(),
-            3,
-            "trailing break must survive rebuild"
-        );
-    }
 }
-
