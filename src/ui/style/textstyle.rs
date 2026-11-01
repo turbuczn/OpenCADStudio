@@ -2,12 +2,11 @@
 
 use crate::app::{Message, StyleKind};
 use crate::t;
+use crate::ui::font_picker::{FaceStyle, FontChoice, FontPickerState};
 use crate::ui::style::common::muted_style;
 use crate::ui::style::form::field_style;
-use iced::widget::{
-    button, canvas, checkbox, column, container, row, scrollable, text, text_input, Space,
-};
-use iced::{mouse, Background, Element, Length, Point, Rectangle, Theme};
+use iced::widget::{canvas, checkbox, column, row, text, text_input, Space};
+use iced::{mouse, Element, Length, Point, Rectangle, Theme};
 use std::borrow::Cow;
 
 pub struct TextStyleView<'a> {
@@ -32,6 +31,7 @@ pub struct TextStyleView<'a> {
     pub height_error: Option<Cow<'static, str>>,
     pub invalid_fields: usize,
     pub use_big_font: bool,
+    pub font_picker: &'a FontPickerState,
     /// The TrueType font style (typeface flags).
     pub bold: bool,
     pub italic: bool,
@@ -43,61 +43,9 @@ pub struct TextStyleView<'a> {
     pub rename_buf: &'a str,
 }
 
-/// The built-in stroke fonts: the name shown, and the SHX file the style
-/// stores, so another program finds the font it names. Each file resolves to
-/// the bundled LFF font of the shown name (`scene::text::lff`).
-const STROKE_FONTS: &[(&str, &str)] = &[
-    ("Standard", "txt.shx"),
-    ("ISO", "isocp.shx"),
-    ("Simplex", "simplex.shx"),
-    ("RomanS", "romans.shx"),
-    ("RomanD", "romand.shx"),
-    ("RomanC", "romanc.shx"),
-    ("RomanT", "romant.shx"),
-    ("ItalicC", "italicc.shx"),
-    ("ItalicT", "italict.shx"),
-    ("ScriptS", "scripts.shx"),
-    ("ScriptC", "scriptc.shx"),
-    ("GothGBT", "gothice.shx"),
-    ("GothGRT", "gothicg.shx"),
-    ("GothITT", "gothici.shx"),
-    ("GreekC", "greekc.shx"),
-    ("ISO3098", "isoct.shx"),
-];
-
-/// True when the stored font names this entry: by file, with or without the
-/// `.shx` extension, or by the shown name older versions stored.
-fn names_font(stored: &str, label: &str, value: &str) -> bool {
-    let stem = |name: &str| -> String {
-        let name = name.trim().to_ascii_lowercase();
-        name.strip_suffix(".shx").unwrap_or(&name).to_string()
-    };
-    stem(stored) == stem(value) || stored.trim().eq_ignore_ascii_case(label)
-}
-
 fn primary_style(theme: &Theme) -> iced::widget::text::Style {
     iced::widget::text::Style {
         color: Some(theme.palette().primary.base.color),
-    }
-}
-
-fn list_item(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
-    move |theme: &Theme, status| {
-        let palette = theme.palette();
-        let pair = match (active, status) {
-            (true, _) => Some(palette.primary.strong),
-            (false, button::Status::Hovered | button::Status::Pressed) => {
-                Some(palette.background.strong)
-            }
-            _ => None,
-        };
-        button::Style {
-            background: pair.map(|value| Background::Color(value.color)),
-            text_color: pair
-                .map(|value| value.text)
-                .unwrap_or(palette.background.base.text),
-            ..Default::default()
-        }
     }
 }
 
@@ -262,21 +210,36 @@ fn number_row<'a>(
             .width(180)
             .into()
     };
-    let line = row![text(label).size(11).style(muted_style).width(150), control]
-        .spacing(8)
-        .align_y(iced::Center);
+    let line = labelled_row(label, control);
     match error {
         Some(error) => column![
             line,
             row![
                 Space::new().width(158),
-                text(error).size(10).style(danger_text_style).width(Length::Fill)
+                text(error)
+                    .size(10)
+                    .style(danger_text_style)
+                    .width(Length::Fill)
             ]
         ]
         .spacing(3)
         .into(),
-        None => line.into(),
+        None => line,
     }
+}
+
+/// A caption and its control on one line, the controls lined up.
+fn labelled_row<'a>(
+    label: Cow<'static, str>,
+    control: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    row![
+        text(label).size(11).style(muted_style).width(150),
+        control.into()
+    ]
+    .spacing(8)
+    .align_y(iced::Center)
+    .into()
 }
 
 fn toggle<'a>(
@@ -293,47 +256,6 @@ fn toggle<'a>(
             .on_toggle(move |_| Message::TextStyleToggle(field))
             .into()
     }
-}
-
-fn font_list<'a>(
-    title: Cow<'static, str>,
-    values: Vec<(String, String)>,
-    selected: &'a str,
-    system: bool,
-    read_only: bool,
-) -> Element<'a, Message> {
-    let items: Vec<Element<'a, Message>> = values
-        .into_iter()
-        .map(|(label, font)| {
-            let active = names_font(selected, &label, &font);
-            let button = button(text(label).size(10))
-                .style(list_item(active))
-                .padding([3, 8])
-                .width(Length::Fill);
-            if read_only {
-                button.into()
-            } else if system {
-                button
-                    .on_press(Message::TextStyleEdit {
-                        field: "ttf",
-                        value: font,
-                    })
-                    .into()
-            } else {
-                button.on_press(Message::TextStyleFontPick(font)).into()
-            }
-        })
-        .collect();
-    container(
-        column![
-            text(title).size(10).style(muted_style),
-            scrollable(column(items).spacing(1)).height(250)
-        ]
-        .spacing(5),
-    )
-    .width(Length::FillPortion(1))
-    .padding(4)
-    .into()
 }
 
 pub fn view_window<'a>(
@@ -379,29 +301,47 @@ pub fn view_window<'a>(
 
     let content: Element<'a, Message> = match v.tab {
         0 => {
-            let built_in = STROKE_FONTS
-                .iter()
-                .map(|(label, file)| ((*label).to_string(), (*file).to_string()))
-                .collect();
-            // Web: the fetched Noto set plus the office/CAD family names it
-            // stands in for (Arial → Noto Sans, …); desktop: installed fonts.
-            let system = crate::scene::text::sysfont::picker_families()
-                .into_iter()
-                .map(|family| (family.clone(), family))
-                .collect();
+            let face = FaceStyle::of(v.bold, v.italic);
+            let face_style: Element<'a, Message> = if ttf && !v.read_only {
+                iced::widget::pick_list(
+                    Some(face),
+                    FaceStyle::offered(v.ttf_buf, face),
+                    |face: &FaceStyle| face.to_string(),
+                )
+                .on_select(Message::TextStyleFaceStyle)
+                .text_size(11)
+                .width(180)
+                .into()
+            } else {
+                // A stroke font has no bold or italic face.
+                crate::ui::read_only::field(
+                    if ttf {
+                        face.to_string()
+                    } else {
+                        t!("TrueType fonts only").into_owned()
+                    }
+                    .as_str(),
+                    11.0,
+                    Length::Fixed(180.0),
+                )
+            };
             column![
-                row![
-                    font_list(t!("Stroke fonts"), built_in, v.font_buf, false, v.read_only),
-                    font_list(t!("System fonts"), system, v.ttf_buf, true, v.read_only),
-                ]
-                .spacing(10),
-                input_row(
-                    t!("Font file"),
-                    t!("font file…"),
-                    v.font_buf,
-                    "font",
-                    v.read_only
+                labelled_row(
+                    t!("Font"),
+                    crate::ui::font_picker::view(crate::ui::font_picker::FontPicker {
+                        state: v.font_picker,
+                        selected: if ttf {
+                            FontChoice::TrueType(v.ttf_buf.to_string())
+                        } else {
+                            FontChoice::Stroke(v.font_buf.to_string())
+                        },
+                        file: v.font_buf.to_string(),
+                        width: Length::Fixed(300.0),
+                        read_only: v.read_only,
+                        on_event: Message::TextStyleFont,
+                    }),
                 ),
+                labelled_row(t!("Font style"), face_style),
                 toggle(
                     t!("Use Big Font"),
                     v.use_big_font,
@@ -415,19 +355,6 @@ pub fn view_window<'a>(
                     "bigfont",
                     v.read_only || !v.use_big_font,
                 ),
-                input_row(
-                    t!("System font"),
-                    t!("font family…"),
-                    v.ttf_buf,
-                    "ttf",
-                    v.read_only
-                ),
-                // A system font's style; stroke fonts have none.
-                row![
-                    toggle(t!("Bold"), v.bold, "bold", v.read_only || !ttf),
-                    toggle(t!("Italic"), v.italic, "italic", v.read_only || !ttf),
-                ]
-                .spacing(18),
             ]
             .spacing(8)
             .into()

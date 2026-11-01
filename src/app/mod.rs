@@ -82,6 +82,8 @@ mod text_style_draft;
 #[cfg(test)]
 mod text_style_data_tests;
 #[cfg(test)]
+mod text_style_font_picker_tests;
+#[cfg(test)]
 mod text_style_manager_tests;
 mod tolerance_dialog;
 mod update;
@@ -1701,6 +1703,7 @@ pub(super) struct OpenCADStudio {
     /// Working copy of the selected style; written into the document before
     /// any list operation and on Apply.
     textstyle_draft: text_style_draft::TextStyleDraft,
+    textstyle_font_picker: crate::ui::font_picker::FontPickerState,
 
     // ── Color Scheme ──────────────────────────────────────────────────────
     active_theme: Theme,
@@ -4816,6 +4819,8 @@ pub enum Message {
     MTextStyle(String),
     /// Toolbar font dropdown changed.
     MTextFont(String),
+    /// The toolbar font picker: open, search or pick.
+    MTextFontPicker(crate::ui::font_picker::FontPickerEvent),
     /// Toolbar oblique-angle field changed.
     MTextOblique(String),
     /// Toolbar width-factor field changed.
@@ -5107,8 +5112,10 @@ pub enum Message {
     },
     /// Commit edits to the selected text style.
     TextStyleApply,
-    /// Select a stroke font by its SHX file name.
-    TextStyleFontPick(String),
+    /// The font picker: open, search or pick a stroke or TrueType font.
+    TextStyleFont(crate::ui::font_picker::FontPickerEvent),
+    /// Pick the TrueType face: regular, bold, italic or both.
+    TextStyleFaceStyle(crate::ui::font_picker::FaceStyle),
     /// Flip a boolean flag on the selected text style (backward / upside_down /
     /// vertical / annotative), applied immediately.
     TextStyleToggle(&'static str),
@@ -6052,6 +6059,7 @@ impl OpenCADStudio {
             textstyle_tab: 0,
             textstyle_compare: String::new(),
             textstyle_draft: Default::default(),
+            textstyle_font_picker: Default::default(),
             // TableStyle dialog
             tablestyle_selected: "Standard".to_string(),
             tablestyle_tab: 0,

@@ -668,6 +668,10 @@ impl OpenCADStudio {
                 .unwrap_or_else(|| "Standard".to_string())
         };
         self.load_textstyle_draft(i);
+        // The head marks a missing font before the list is first opened.
+        self.textstyle_font_picker.open = false;
+        self.textstyle_font_picker
+            .refresh(&self.tabs[i].scene.document, false);
         self.active_modal = Some(crate::app::ModalKind::TextStyle);
         self.style_stage_begin();
         Task::none()

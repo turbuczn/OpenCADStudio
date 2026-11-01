@@ -3,6 +3,7 @@
 //! rename touched (#2413).
 
 use super::*;
+use crate::ui::font_picker::{FontChoice, FontPickerEvent};
 use codec::entities::{EntityType, MText, Text};
 use codec::tables::TextStyle;
 use codec::types::{Handle, Vector3};
@@ -32,6 +33,11 @@ fn app_with_exact_style() -> (OpenCADStudio, Handle, Handle) {
     let mtext = doc.add_entity(EntityType::MText(Box::new(mtext))).unwrap();
     app.tabs[i].dirty = false;
     (app, text, mtext)
+}
+
+/// Pick `choice` in the text style manager's font picker.
+pub(super) fn pick(choice: FontChoice) -> Message {
+    Message::TextStyleFont(FontPickerEvent::Pick(choice))
 }
 
 fn stored(app: &OpenCADStudio, name: &str) -> Option<TextStyle> {
@@ -258,10 +264,7 @@ fn use_big_font_clears_the_file_and_a_truetype_font_turns_it_off() {
         field: "bigfont",
         value: "chineset.shx".to_string(),
     });
-    let _ = app.update(Message::TextStyleEdit {
-        field: "ttf",
-        value: "Arial".to_string(),
-    });
+    let _ = app.update(pick(FontChoice::TrueType("Arial".to_string())));
     assert!(!app.textstyle_draft.big_font_on);
     let _ = app.update(Message::TextStyleApply);
     assert!(stored(&app, "Exact").unwrap().big_font_file.is_empty());

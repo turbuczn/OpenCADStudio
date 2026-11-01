@@ -138,6 +138,18 @@ impl TextStyleDraft {
         self.big_font_on = false;
     }
 
+    /// Set the TrueType face: the bold and italic flags, other bits kept.
+    pub(super) fn set_face(&mut self, bold: bool, italic: bool) {
+        let flags = &mut self.style.true_type_font_flags;
+        *flags &= !(TTF_FLAG_BOLD | TTF_FLAG_ITALIC);
+        if bold {
+            *flags |= TTF_FLAG_BOLD;
+        }
+        if italic {
+            *flags |= TTF_FLAG_ITALIC;
+        }
+    }
+
     /// The style as edited: the changed number fields written in, every other
     /// value exactly as stored.
     pub(super) fn resolved(&self) -> TextStyle {

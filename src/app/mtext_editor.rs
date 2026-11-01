@@ -202,6 +202,8 @@ pub struct MTextEditorState {
     pub show_preview: bool,
     /// Whether the toolbar colour picker popup is open.
     pub color_picker_open: bool,
+    /// The toolbar font picker.
+    pub font_picker: crate::ui::font_picker::FontPickerState,
     /// The open toolbar menu.
     pub menu: Option<EditorMenu>,
     /// The Background menu's mask while it differs from the stored one.
@@ -265,6 +267,7 @@ impl MTextEditorState {
             preview_wires: Vec::new(),
             show_preview: true,
             color_picker_open: false,
+            font_picker: Default::default(),
             menu: None,
             fraction: None,
             field_host: None,

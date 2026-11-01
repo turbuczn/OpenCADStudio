@@ -78,19 +78,6 @@ pub(super) fn text_inline_overlay(
     position_canvas_overlay(anchor, panel.into())
 }
 
-// Stroke-font families bundled with the renderer; see scene/lff.rs.
-const MTEXT_FONTS: [&str; 10] = [
-    "[Style default]",
-    "Standard",
-    "ISO",
-    "Simplex",
-    "RomanS",
-    "RomanD",
-    "ItalicC",
-    "ScriptS",
-    "GothGBT",
-    "RomanC",
-];
 /// (label, ACI). 256 = ByLayer.
 /// Canvas program that renders the tessellated MText strokes inside the
 /// editor's own preview area (never on the drawing). Strokes lie in the
@@ -578,8 +565,8 @@ fn mtext_editor_content<'a>(
     // comes from (the style, the text's own, or the style with overrides).
     let labelled = |name: std::borrow::Cow<'static, str>,
                     origin: Option<super::super::mtext_editor::ValueOrigin>,
-                    control: Element<'static, Message>|
-     -> Element<'static, Message> {
+                    control: Element<'a, Message>|
+     -> Element<'a, Message> {
         use super::super::mtext_editor::ValueOrigin;
         let mut caption = row![text(name).size(11)].spacing(4);
         if let Some(origin) = origin {
@@ -616,20 +603,15 @@ fn mtext_editor_content<'a>(
     let annotative = checkbox(ed.annotative)
         .on_toggle(Message::MTextAnnotative)
         .size(14);
-    let font_sel = match ed.font_field() {
-        font if font.trim().is_empty() => "[Style default]".to_string(),
-        font => font,
-    };
-    let mut font_opts: Vec<String> = MTEXT_FONTS.iter().map(|s| s.to_string()).collect();
-    // The text's own font stays listed when it is not one of the bundled ones.
-    if !font_opts.contains(&font_sel) {
-        font_opts.push(font_sel.clone());
-    }
-    let font_pl =
-        iced::widget::pick_list(Some(font_sel), font_opts, |value| t!(value).into_owned())
-            .on_select(Message::MTextFont)
-            .text_size(11)
-            .width(iced::Length::Fixed(120.0));
+    let font = ed.font_field();
+    let font_pl = crate::ui::font_picker::view(crate::ui::font_picker::FontPicker {
+        state: &ed.font_picker,
+        selected: crate::ui::font_picker::FontChoice::of_name(&font),
+        file: font,
+        width: iced::Length::Fixed(150.0),
+        read_only: false,
+        on_event: Message::MTextFontPicker,
+    });
     // Same colour picker as the Properties panel (named swatches + "More…" full
     // palette), applied to the selection or the whole text.
     let color_pl = iced::widget::container(crate::ui::color_select::color_selector(
@@ -648,7 +630,7 @@ fn mtext_editor_content<'a>(
 
     let row1 = row![
         labelled(t!("Style"), None, style_pl.into()),
-        labelled(t!("Font"), Some(ed.value_origin("font")), font_pl.into()),
+        labelled(t!("Font"), Some(ed.value_origin("font")), font_pl),
         labelled(
             t!("Height"),
             None,

@@ -927,6 +927,7 @@ impl OpenCADStudio {
                             height_error: draft.height.error(),
                             invalid_fields: draft.invalid_fields(),
                             use_big_font: draft.big_font_on,
+                            font_picker: &self.textstyle_font_picker,
                             bold: ttf_flags & crate::entities::text_support::TTF_FLAG_BOLD != 0,
                             italic: ttf_flags & crate::entities::text_support::TTF_FLAG_ITALIC
                                 != 0,

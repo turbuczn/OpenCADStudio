@@ -2,6 +2,7 @@ use super::{ArrowKey, Message, OpenCADStudio, TextEntryMode};
 use crate::command::CadCommand;
 use crate::io::plot_style::PlotStyleTableExt as _;
 use crate::scene::VIEWCUBE_DRAW_PX;
+use crate::ui::font_picker::FontChoice;
 use crate::ui::PropertiesPanel;
 use iced::time::Instant;
 use iced::Task;
@@ -7969,6 +7970,21 @@ impl OpenCADStudio {
                 self.mtext_apply_font(&f);
                 Task::none()
             }
+            Message::MTextFontPicker(event) => {
+                let doc = &self.tabs[self.active_tab].scene.document;
+                let picked = self
+                    .mtext_editor
+                    .as_mut()
+                    .and_then(|ed| ed.font_picker.update(event, doc, true));
+                match picked {
+                    Some(FontChoice::StyleDefault) => self.mtext_apply_font("[Style default]"),
+                    Some(FontChoice::Stroke(font) | FontChoice::TrueType(font)) => {
+                        self.mtext_apply_font(&font)
+                    }
+                    None => {}
+                }
+                Task::none()
+            }
             Message::MTextOblique(s) => {
                 self.mtext_apply_span_number("oblique", s);
                 Task::none()
@@ -13068,13 +13084,10 @@ impl OpenCADStudio {
             Message::TextStyleEdit { field, value } => {
                 let draft = &mut self.textstyle_draft;
                 match field {
-                    "font" => draft.style.font_file = value,
                     "width" => draft.width.text = value,
                     "oblique" => draft.oblique.text = value,
                     "height" => draft.height.text = value,
                     "bigfont" if draft.big_font_on => draft.style.big_font_file = value,
-                    "ttf" if value.trim().is_empty() => draft.style.true_type_font.clear(),
-                    "ttf" => draft.pick_system_font(value),
                     _ => {}
                 }
                 Task::none()
@@ -13090,22 +13103,31 @@ impl OpenCADStudio {
                     "vertical" => s.is_vertical = !s.is_vertical,
                     "annotative" => s.annotative = !s.annotative,
                     "use_big_font" => self.textstyle_draft.toggle_big_font(),
-                    "bold" => s.true_type_font_flags ^= crate::entities::text_support::TTF_FLAG_BOLD,
-                    "italic" => {
-                        s.true_type_font_flags ^= crate::entities::text_support::TTF_FLAG_ITALIC
-                    }
                     _ => {}
                 }
                 Task::none()
             }
             Message::TextStyleApply => self.on_text_style_apply(),
-            Message::TextStyleFontPick(font_file) => {
+            Message::TextStyleFont(event) => {
                 if self.selected_textstyle_is_read_only() {
                     return Task::none();
                 }
-                // A stroke font replaces the system font, which would
-                // otherwise keep taking precedence.
-                self.textstyle_draft.pick_stroke_font(font_file);
+                let doc = &self.tabs[self.active_tab].scene.document;
+                match self.textstyle_font_picker.update(event, doc, false) {
+                    // A stroke font replaces the system font, which would
+                    // otherwise keep taking precedence.
+                    Some(FontChoice::Stroke(file)) => self.textstyle_draft.pick_stroke_font(file),
+                    Some(FontChoice::TrueType(family)) => {
+                        self.textstyle_draft.pick_system_font(family)
+                    }
+                    Some(FontChoice::StyleDefault) | None => {}
+                }
+                Task::none()
+            }
+            Message::TextStyleFaceStyle(face) => {
+                if !self.selected_textstyle_is_read_only() {
+                    self.textstyle_draft.set_face(face.bold(), face.italic());
+                }
                 Task::none()
             }
 

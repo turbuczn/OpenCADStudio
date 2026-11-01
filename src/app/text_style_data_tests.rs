@@ -2,8 +2,10 @@
 //! SHX file, or a TrueType file and family), drops settings the new font
 //! cannot have, and saves and loads without losing or doubling data (#2413).
 
+use super::text_style_manager_tests::pick;
 use super::*;
 use crate::entities::text_support::{TTF_FLAG_BOLD, TTF_FLAG_ITALIC};
+use crate::ui::font_picker::FontChoice;
 use codec::entities::{AttributeDefinition, EntityType};
 use codec::tables::TextStyle;
 use codec::types::Handle;
@@ -64,7 +66,7 @@ fn a_stroke_font_stores_its_shx_file_and_drops_bold_and_italic() {
     let i = app.active_tab;
     app.tabs[i].scene.document = round_trip(&app.tabs[i].scene.document, "dxf");
     let _ = app.update(Message::TextStyleDialogSelect("Notes".to_string()));
-    let _ = app.update(Message::TextStyleFontPick("simplex.shx".to_string()));
+    let _ = app.update(pick(FontChoice::Stroke("simplex.shx".to_string())));
     let _ = app.update(Message::TextStyleApply);
 
     let doc = &app.tabs[i].scene.document;
@@ -99,10 +101,7 @@ fn a_system_font_stores_its_file_with_the_family_and_drops_stroke_settings() {
     style.big_font_file = "gbcbig.shx".to_string();
     style.is_vertical = true;
     let mut app = app_editing(style);
-    let _ = app.update(Message::TextStyleEdit {
-        field: "ttf",
-        value: family.clone(),
-    });
+    let _ = app.update(pick(FontChoice::TrueType(family.clone())));
     let _ = app.update(Message::TextStyleApply);
 
     let doc = &app.tabs[app.active_tab].scene.document;
@@ -130,10 +129,7 @@ fn a_dxf_round_trip_keeps_one_current_family_record() {
     let first = round_trip(&app.tabs[i].scene.document, "dxf");
     app.tabs[i].scene.document = first;
     let _ = app.update(Message::TextStyleDialogSelect("Notes".to_string()));
-    let _ = app.update(Message::TextStyleEdit {
-        field: "ttf",
-        value: "Verdana".to_string(),
-    });
+    let _ = app.update(pick(FontChoice::TrueType("Verdana".to_string())));
     let _ = app.update(Message::TextStyleApply);
 
     let back = round_trip(&app.tabs[i].scene.document, "dxf");
