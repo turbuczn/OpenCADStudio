@@ -7985,6 +7985,10 @@ impl OpenCADStudio {
                 }
                 Task::none()
             }
+            Message::MTextResetToStyle(field) => {
+                self.mtext_reset_to_style(field);
+                Task::none()
+            }
             Message::MTextOblique(s) => {
                 self.mtext_apply_span_number("oblique", s);
                 Task::none()

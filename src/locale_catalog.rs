@@ -4507,6 +4507,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Bold Italic" => Some(("style-manager", "face-bold-italic")),
         "Font style" => Some(("style-manager", "font-style")),
         "TrueType fonts only" => Some(("style-manager", "truetype-fonts-only")),
+        "Reset to style ({value})" => Some(("mtext-object-origin", "reset-to-style")),
         "{value}: {from} → {to}. 1 text that follows the style is updated." => Some(("style-manager", "style-update-one")),
         "{value}: {from} → {to}. {count} texts that follow the style are updated." => Some(("style-manager", "style-update-many")),
         "Inside block definitions: {count}." => Some(("style-manager", "style-update-in-blocks")),

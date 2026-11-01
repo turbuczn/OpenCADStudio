@@ -15,6 +15,10 @@ pub(in crate::app) struct ObjectStyle {
     pub face: String,
     /// The style's own width factor.
     pub width: f64,
+    /// The style's oblique angle, in degrees.
+    pub oblique: f64,
+    /// The style's fixed height; 0 when the height is asked for each text.
+    pub height: f64,
     /// Bold/italic the style's TrueType face supplies, i.e. what a run
     /// without its own `|b`/`|i` flags shows once the object font is reset.
     pub font_flags: (bool, bool),
@@ -104,6 +108,14 @@ impl ObjectStyle {
                 .map(|s| s.width_factor)
                 .filter(|w| w.is_finite() && *w > 0.)
                 .unwrap_or(1.),
+            oblique: style
+                .map(|s| s.oblique_angle.to_degrees())
+                .filter(|o| o.is_finite())
+                .unwrap_or(0.),
+            height: style
+                .map(|s| s.height)
+                .filter(|h| h.is_finite() && *h > 0.)
+                .unwrap_or(0.),
             font_flags: style
                 .filter(|s| !s.true_type_font.trim().is_empty())
                 .map_or((false, false), |s| {
@@ -329,7 +341,8 @@ impl MTextEditorState {
         self.object_style = ObjectStyle::of(doc, &self.style);
         self.font = text_font(&raw).map_or_else(String::new, |f| f.name);
         self.width = number_text(base_width(&raw, self.object_style.width).unwrap_or(1.));
-        self.oblique = object_number(&raw, 'Q').map_or_else(|| "0".into(), number_text);
+        // Without a whole-text `\Q` the text slants as its style does.
+        self.oblique = number_text(object_number(&raw, 'Q').unwrap_or(self.object_style.oblique));
         self.char_space = object_number(&raw, 'T').map_or_else(|| "0".into(), number_text);
     }
 
@@ -348,7 +361,11 @@ impl MTextEditorState {
 
     pub(in crate::app) fn value_origin(&self, field: &str) -> ValueOrigin {
         let raw = self.content.text();
-        let code = if field == "font" { 'f' } else { 'W' };
+        let code = match field {
+            "font" => 'f',
+            "oblique" => 'Q',
+            _ => 'W',
+        };
         if !leading_controls(&raw, code).is_empty() || field == "font" && text_font(&raw).is_some()
         {
             return ValueOrigin::Custom;
@@ -359,12 +376,47 @@ impl MTextEditorState {
             Kind::Control('f' | 'F') if field == "font" => font_of(&raw[t.raw.clone()])
                 .is_none_or(|f| !f.name.eq_ignore_ascii_case(&self.object_style.face)),
             Kind::Control('W') => field == "width",
+            Kind::Control('Q') => field == "oblique",
             _ => false,
         });
         if overridden {
             ValueOrigin::Mixed
         } else {
             ValueOrigin::Style
+        }
+    }
+
+    /// Where the height comes from: the style's fixed height or the text's
+    /// own. `None` when the style has no fixed height to follow.
+    pub(in crate::app) fn height_origin(&self) -> Option<ValueOrigin> {
+        let style = self.object_style.height;
+        if style <= 0. {
+            return None;
+        }
+        let height = self.height.trim().replace(',', ".").parse::<f64>().ok();
+        if height.is_none_or(|h| (h - style).abs() > 1e-9 * style.max(1.)) {
+            return Some(ValueOrigin::Custom);
+        }
+        let raw = self.content.text();
+        let sized = SourceIndex::new(&raw)
+            .tokens
+            .iter()
+            .any(|t| matches!(t.kind, Kind::Control('H')));
+        Some(if sized {
+            ValueOrigin::Mixed
+        } else {
+            ValueOrigin::Style
+        })
+    }
+
+    /// The style's value for a first-row field, as "Reset to style" names it.
+    pub(in crate::app) fn style_value(&self, field: &str) -> String {
+        let style = &self.object_style;
+        match field {
+            "font" => style.face.clone(),
+            "height" => number_text(style.height),
+            "width" => number_text(style.width),
+            _ => format!("{}°", number_text(style.oblique)),
         }
     }
 }
@@ -449,8 +501,15 @@ impl crate::app::OpenCADStudio {
         };
         ed.record_undo();
         let raw = ed.content.text();
+        // The style's oblique needs no code; tracking's default is 0.
+        let default = if code == 'Q' {
+            ed.object_style.oblique
+        } else {
+            0.
+        };
         if let Some(number) = number {
-            let target = (number != 0.).then_some(number);
+            // Degrees from the stored radians carry a last-bit error.
+            let target = ((number - default).abs() > 1e-9).then_some(number);
             if object_number(&raw, code) != target {
                 let control = target.map(|v| format!("\\{code}{};", number_text(v)));
                 self.set_object_source(patch_object_control(&raw, code, control));
@@ -523,14 +582,59 @@ impl crate::app::OpenCADStudio {
         }
         if self.set_object_source(result) {
             if let Some(ed) = self.mtext_editor.as_mut() {
+                // A height that followed the old style follows the new one.
+                if ed.height_origin() == Some(ValueOrigin::Style) && style.height > 0. {
+                    ed.height = number_text(style.height);
+                    ed.height_dirty = true;
+                }
+                let raw = ed.content.text();
                 ed.style = name;
                 ed.object_style = style;
-                ed.width = number_text(
-                    base_width(&ed.content.text(), ed.object_style.width).unwrap_or(1.),
-                );
+                ed.width = number_text(base_width(&raw, ed.object_style.width).unwrap_or(1.));
+                ed.oblique =
+                    number_text(object_number(&raw, 'Q').unwrap_or(ed.object_style.oblique));
             }
         }
         self.rebuild_mtext_preview();
+    }
+
+    /// "Reset to style" on a first-row field: drop the whole-text code that
+    /// overrides the style, or give the text the style's fixed height. Codes
+    /// that format only part of the text stay.
+    pub(in crate::app) fn mtext_reset_to_style(&mut self, field: &str) {
+        let Some(ed) = self.mtext_editor.as_ref() else {
+            return;
+        };
+        let raw = ed.content.text();
+        let style = ed.object_style.clone();
+        match field {
+            "font" => self.mtext_object_font("[Style default]"),
+            "width" => {
+                if let Some(ed) = self.mtext_editor.as_mut() {
+                    ed.record_undo();
+                }
+                if self.set_object_source(patch_width(&raw, style.width, None)) {
+                    if let Some(ed) = self.mtext_editor.as_mut() {
+                        ed.width = number_text(style.width);
+                    }
+                }
+                self.rebuild_mtext_preview();
+            }
+            "oblique" => {
+                let shown = number_text(style.oblique);
+                self.mtext_object_number("oblique", shown, Some(style.oblique));
+            }
+            // The object height, whatever is selected.
+            "height" if style.height > 0. => {
+                if let Some(ed) = self.mtext_editor.as_mut() {
+                    ed.record_undo();
+                    ed.height = number_text(style.height);
+                    ed.height_dirty = true;
+                }
+                self.rebuild_mtext_preview();
+            }
+            _ => {}
+        }
     }
 }
 

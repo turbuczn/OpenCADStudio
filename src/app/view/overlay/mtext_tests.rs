@@ -170,11 +170,6 @@ fn menu_fields_take_typing_and_keep_the_menu_open() {
     let cases: Vec<(EditorMenu, String, fn(&Message) -> bool)> = vec![
         (
             EditorMenu::More,
-            label!("oblique"),
-            |m| matches!(m, Message::MTextOblique(s) if s.ends_with('7')),
-        ),
-        (
-            EditorMenu::More,
             label!("tracking"),
             |m| matches!(m, Message::MTextCharSpace(s) if s.ends_with('7')),
         ),

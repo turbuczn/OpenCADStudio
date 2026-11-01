@@ -45,6 +45,7 @@ mtext-object-origin = MTEXT
     .style = By style
     .custom = Custom
     .mixed = Mixed
+    .reset-to-style = 重設為型式 (__ocs_fmt_0__)
 
 mtext-commit-errors = MTEXT
     .numeric = MTEXT: enter a valid height, width factor and rotation before saving.

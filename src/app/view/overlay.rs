@@ -532,6 +532,21 @@ pub(super) fn mtext_editor_overlay<'a>(
     )
 }
 
+/// The right-click menu of a first-row field with a value of its own. One
+/// `mouse_area` row: a button inside a `ContextMenu` overlay loses its press
+/// state on every rebuild and never publishes (see `xref_manager::menu_row`).
+fn reset_menu(field: &'static str, value: &str) -> Element<'static, Message> {
+    let row = iced::widget::mouse_area(
+        container(text(crate::tf!("Reset to style ({value})")).size(12)).padding([5, 12]),
+    )
+    .on_press(Message::MTextResetToStyle(field))
+    .interaction(iced::mouse::Interaction::Pointer);
+    container(row)
+        .style(container::bordered_box)
+        .padding(2)
+        .into()
+}
+
 fn mtext_editor_content<'a>(
     ed: &'a super::super::mtext_editor::MTextEditorState,
     styles: &[String],
@@ -628,27 +643,74 @@ fn mtext_editor_content<'a>(
     ))
     .width(iced::Length::Fixed(150.0));
 
+    // A value of the text's own takes "Reset to style" on a right click.
+    let resettable = |field: &'static str,
+                      origin: Option<super::super::mtext_editor::ValueOrigin>,
+                      cell: Element<'a, Message>|
+     -> Element<'a, Message> {
+        if origin != Some(super::super::mtext_editor::ValueOrigin::Custom) {
+            return cell;
+        }
+        let value = ed.style_value(field);
+        iced_aw::ContextMenu::new(cell, move || reset_menu(field, &value)).into()
+    };
+    let font_origin = Some(ed.value_origin("font"));
+    let height_origin = ed.height_origin();
+    let width_origin = Some(ed.value_origin("width"));
+    let oblique_origin = Some(ed.value_origin("oblique"));
     let row1 = row![
         labelled(t!("Style"), None, style_pl.into()),
-        labelled(t!("Font"), Some(ed.value_origin("font")), font_pl),
-        labelled(
-            t!("Height"),
-            None,
-            small_input(
-                "2.5",
-                ed.span_field("height", &ed.height),
-                Message::MTextHeight,
-                64.0
+        resettable(
+            "font",
+            font_origin,
+            labelled(t!("Font"), font_origin, font_pl)
+        ),
+        resettable(
+            "height",
+            height_origin,
+            labelled(
+                t!("Height"),
+                height_origin,
+                small_input(
+                    "2.5",
+                    ed.span_field("height", &ed.height),
+                    Message::MTextHeight,
+                    64.0
+                )
             )
         ),
-        labelled(
-            t!("Width factor"),
-            Some(ed.value_origin("width")),
-            small_input(
-                "1",
-                ed.span_field("width", &ed.width),
-                Message::MTextWidth,
-                64.0
+        resettable(
+            "width",
+            width_origin,
+            labelled(
+                t!("Width factor"),
+                width_origin,
+                small_input(
+                    "1",
+                    ed.span_field("width", &ed.width),
+                    Message::MTextWidth,
+                    64.0
+                )
+            )
+        ),
+        resettable(
+            "oblique",
+            oblique_origin,
+            labelled(
+                t!("Oblique"),
+                oblique_origin,
+                row![
+                    small_input(
+                        "0",
+                        ed.span_field("oblique", &ed.oblique),
+                        Message::MTextOblique,
+                        52.0
+                    ),
+                    text("°").size(12)
+                ]
+                .spacing(3)
+                .align_y(iced::Alignment::Center)
+                .into()
             )
         ),
         labelled(

@@ -45,6 +45,7 @@ mtext-object-origin = MTEXT
     .style = Stílus szerint
     .custom = Egyedi
     .mixed = Vegyes
+    .reset-to-style = Vissza a stílushoz (__ocs_fmt_0__)
 
 mtext-commit-errors = MTEXT
     .numeric = MTEXT: mentéshez érvényes magasság, szélességi tényező és forgatás szükséges.

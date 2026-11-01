@@ -284,11 +284,6 @@ fn more_panel(ed: &MTextEditorState) -> Element<'static, Message> {
         ))
         .separator()
         .push(field(
-            label!("oblique"),
-            ed.span_field("oblique", &ed.oblique),
-            Message::MTextOblique,
-        ))
-        .push(field(
             label!("tracking"),
             ed.span_field("tracking", &ed.char_space),
             Message::MTextCharSpace,

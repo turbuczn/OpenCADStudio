@@ -56,6 +56,8 @@ mod layers;
 mod measurement;
 mod model_ops;
 mod mtext_editor;
+#[cfg(test)]
+mod mtext_follows_style_tests;
 mod navigation;
 #[cfg(test)]
 mod object_isolation_tests;
@@ -4826,6 +4828,8 @@ pub enum Message {
     MTextFont(String),
     /// The toolbar font picker: open, search or pick.
     MTextFontPicker(crate::ui::font_picker::FontPickerEvent),
+    /// "Reset to style" on a first-row field (font, height, width, oblique).
+    MTextResetToStyle(&'static str),
     /// Toolbar oblique-angle field changed.
     MTextOblique(String),
     /// Toolbar width-factor field changed.
