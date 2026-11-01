@@ -13072,7 +13072,7 @@ impl OpenCADStudio {
                     "width" => draft.width.text = value,
                     "oblique" => draft.oblique.text = value,
                     "height" => draft.height.text = value,
-                    "bigfont" => draft.style.big_font_file = value,
+                    "bigfont" if draft.big_font_on => draft.style.big_font_file = value,
                     "ttf" if value.trim().is_empty() => draft.style.true_type_font.clear(),
                     "ttf" => draft.pick_system_font(value),
                     _ => {}
@@ -13089,6 +13089,7 @@ impl OpenCADStudio {
                     "upside_down" => s.flags.upside_down = !s.flags.upside_down,
                     "vertical" => s.is_vertical = !s.is_vertical,
                     "annotative" => s.annotative = !s.annotative,
+                    "use_big_font" => self.textstyle_draft.toggle_big_font(),
                     "bold" => s.true_type_font_flags ^= crate::entities::text_support::TTF_FLAG_BOLD,
                     "italic" => {
                         s.true_type_font_flags ^= crate::entities::text_support::TTF_FLAG_ITALIC

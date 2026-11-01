@@ -7,20 +7,25 @@
 
 use crate::entities::text_support::{TTF_FLAG_BOLD, TTF_FLAG_ITALIC};
 use codec::tables::TextStyle;
+use std::borrow::Cow;
 
-/// A number field: the text shown when the style was loaded, and the text in
-/// the field now.
+/// A number field: the text shown when the style was loaded, the text in the
+/// field now, and the values it accepts.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct NumberField {
     shown: String,
     pub(super) text: String,
+    min: f64,
+    max: f64,
 }
 
 impl NumberField {
-    fn new(shown: String) -> Self {
+    fn new(shown: String, min: f64, max: f64) -> Self {
         Self {
             text: shown.clone(),
             shown,
+            min,
+            max,
         }
     }
 
@@ -28,11 +33,29 @@ impl NumberField {
         self.text.trim() != self.shown.trim()
     }
 
-    /// The typed value, when the user changed the field and it parses.
+    /// The typed value, when the user changed the field to an accepted one.
     fn typed(&self) -> Option<f64> {
         self.is_modified()
             .then(|| self.text.trim().parse::<f64>().ok())
             .flatten()
+            .filter(|value| value.is_finite() && (self.min..=self.max).contains(value))
+    }
+
+    /// Why the typed text cannot be applied. An untouched field is never
+    /// wrong, even when the drawing stores a value outside the range.
+    pub(super) fn error(&self) -> Option<Cow<'static, str>> {
+        if !self.is_modified() || self.typed().is_some() {
+            return None;
+        }
+        Some(if self.max.is_finite() {
+            crate::tf!(
+                "Use digits and a decimal point. Enter a value from {} to {}.",
+                self.min,
+                self.max
+            )
+        } else {
+            crate::t!("Use digits and a decimal point. Enter 0 or a positive number.")
+        })
     }
 }
 
@@ -45,6 +68,11 @@ pub(super) struct TextStyleDraft {
     /// Shown in degrees, stored in radians.
     pub(super) oblique: NumberField,
     pub(super) height: NumberField,
+    /// "Use Big Font" is on. The style stores only the file, so the switch
+    /// lives here: on with an empty file while the user picks one.
+    pub(super) big_font_on: bool,
+    /// The big font the switch turned off, given back when it is turned on.
+    big_font_off: String,
 }
 
 impl Default for TextStyleDraft {
@@ -57,9 +85,34 @@ impl TextStyleDraft {
     pub(super) fn load(style: &TextStyle) -> Self {
         Self {
             style: style.clone(),
-            width: NumberField::new(format!("{:.4}", style.width_factor)),
-            oblique: NumberField::new(format!("{:.2}", style.oblique_angle.to_degrees())),
-            height: NumberField::new(format!("{:.4}", style.height)),
+            width: NumberField::new(format!("{:.4}", style.width_factor), 0.01, 100.0),
+            oblique: NumberField::new(
+                format!("{:.2}", style.oblique_angle.to_degrees()),
+                -85.0,
+                85.0,
+            ),
+            height: NumberField::new(format!("{:.4}", style.height), 0.0, f64::INFINITY),
+            big_font_on: !style.big_font_file.trim().is_empty(),
+            big_font_off: String::new(),
+        }
+    }
+
+    /// How many number fields hold text that cannot be applied.
+    pub(super) fn invalid_fields(&self) -> usize {
+        [&self.width, &self.oblique, &self.height]
+            .into_iter()
+            .filter(|field| field.error().is_some())
+            .count()
+    }
+
+    /// Turn "Use Big Font" on or off. Off clears the stored file; on gives
+    /// back the file it cleared.
+    pub(super) fn toggle_big_font(&mut self) {
+        self.big_font_on = !self.big_font_on;
+        if self.big_font_on {
+            self.style.big_font_file = std::mem::take(&mut self.big_font_off);
+        } else {
+            self.big_font_off = std::mem::take(&mut self.style.big_font_file);
         }
     }
 
@@ -82,6 +135,7 @@ impl TextStyleDraft {
         style.true_type_font = family;
         style.is_vertical = false;
         style.big_font_file.clear();
+        self.big_font_on = false;
     }
 
     /// The style as edited: the changed number fields written in, every other
@@ -95,7 +149,7 @@ impl TextStyleDraft {
             style.oblique_angle = oblique.to_radians();
         }
         if let Some(height) = self.height.typed() {
-            style.height = height.max(0.0);
+            style.height = height;
         }
         style
     }
@@ -128,6 +182,43 @@ mod tests {
         assert_eq!(resolved.height, 3.5);
         assert_eq!(resolved.width_factor, 0.123456789);
         assert_eq!(resolved.oblique_angle, 0.1);
+    }
+
+    #[test]
+    fn a_value_out_of_range_or_not_a_number_is_kept_but_not_written() {
+        let mut draft = TextStyleDraft::load(&style());
+        draft.width.text = "200".to_string();
+        draft.oblique.text = "1,5".to_string();
+        draft.height.text = "-1".to_string();
+        assert_eq!(draft.invalid_fields(), 3);
+        assert!(draft.width.error().is_some_and(|error| error.contains("0.01 to 100")));
+        assert!(draft.oblique.error().is_some_and(|error| error.contains("-85 to 85")));
+        assert_eq!(draft.resolved(), style());
+        assert_eq!(draft.width.text, "200");
+
+        draft.width.text = "100".to_string();
+        draft.oblique.text = "-85".to_string();
+        draft.height.text = "0".to_string();
+        assert_eq!(draft.invalid_fields(), 0);
+    }
+
+    #[test]
+    fn an_untouched_value_outside_the_range_is_not_an_error() {
+        let mut stored = style();
+        stored.width_factor = 500.0;
+        assert_eq!(TextStyleDraft::load(&stored).invalid_fields(), 0);
+    }
+
+    #[test]
+    fn big_font_off_clears_the_file_and_on_gives_it_back() {
+        let mut stored = style();
+        stored.big_font_file = "gbcbig.shx".to_string();
+        let mut draft = TextStyleDraft::load(&stored);
+        assert!(draft.big_font_on);
+        draft.toggle_big_font();
+        assert!(draft.resolved().big_font_file.is_empty());
+        draft.toggle_big_font();
+        assert_eq!(draft.resolved(), stored);
     }
 
     #[test]

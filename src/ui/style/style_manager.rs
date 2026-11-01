@@ -53,6 +53,9 @@ pub struct Scaffold<'a, 'b> {
     /// "Styles in use" list filter: whether it is on and the message that
     /// sets it. `None` for managers without one.
     pub in_use_filter: Option<(bool, fn(bool) -> Message)>,
+    /// Why Apply is off while the editor holds values it cannot apply, shown
+    /// beside the button. `None` keeps Apply on.
+    pub apply_blocked: Option<Cow<'static, str>>,
     pub editor: Element<'a, Message>,
 }
 
@@ -68,12 +71,22 @@ pub fn view<'a, 'b>(s: Scaffold<'a, 'b>) -> Element<'a, Message> {
     if let Some(message) = s.on_import {
         bar = bar.push(tb_button(t!("Import"), message, false));
     }
+    let mut bar = bar.push(Space::new().width(width));
+    let can_apply = s.apply_blocked.is_none();
+    if let Some(reason) = s.apply_blocked {
+        bar = bar.push(
+            text(reason)
+                .size(11)
+                .style(crate::ui::style::editor_table::danger_text_style),
+        );
+    }
     let bar = bar
-        .push(Space::new().width(width))
         .push(tb_button_enabled(
             t!("Set Current"), s.on_set_current, false, !s.read_only,
         ))
-        .push(tb_button_enabled(t!("Apply"), s.on_apply, true, !s.read_only))
+        .push(tb_button_enabled(
+            t!("Apply"), s.on_apply, true, !s.read_only && can_apply,
+        ))
         .spacing(4)
         .align_y(iced::Center);
     let toolbar = container(bar)

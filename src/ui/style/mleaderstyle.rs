@@ -1037,6 +1037,7 @@ pub fn view_window<'a>(
         on_apply: Message::MLeaderStyleApply,
         read_only: false,
         in_use_filter: None,
+        apply_blocked: None,
         editor,
     })
 }

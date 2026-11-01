@@ -6528,6 +6528,11 @@ dimstyle =
     .surveyors-units = ຫົວໜ່ວຍການສຳຫຼວດ
 
 style-manager =
+    .use-big-font = Use Big Font
+    .number-field-range = Use digits and a decimal point. Enter a value from __ocs_fmt_0__ to __ocs_fmt_1__.
+    .number-field-non-negative = Use digits and a decimal point. Enter 0 or a positive number.
+    .one-field-needs-fixing = 1 field needs fixing before Apply.
+    .fields-need-fixing = __ocs_fmt_0__ fields need fixing before Apply.
     .import-styles = ນຳເຂົ້າຮູບແບບ
     .select-drawing-to-import-styles-from = ເລືອກແບບແຕ້ມທີ່ຈະນຳເຂົ້າຮູບແບບ
     .select-the-styles-to-import = ເລືອກຮູບແບບທີ່ຈະນຳເຂົ້າ

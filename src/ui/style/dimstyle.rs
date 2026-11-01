@@ -1453,6 +1453,7 @@ pub fn view_window<'a>(
         on_apply: Message::DimStyleDialogApply,
         read_only: vals.read_only,
         in_use_filter: None,
+        apply_blocked: None,
         editor: right_panel.into(),
     })
 }

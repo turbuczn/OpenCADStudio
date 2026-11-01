@@ -739,11 +739,12 @@ impl OpenCADStudio {
         let i = self.active_tab;
         let name = self.unique_new_name(kind);
         let h = self.tabs[i].scene.document.allocate_handle();
-        // A new dimension style starts from the selected one: the bare
-        // defaults are inch-sized, so in a metric drawing its arrows and gaps
-        // would come out too small to see.
+        // A new dimension or text style starts from the selected one: the
+        // bare defaults are inch-sized, so in a metric drawing its arrows,
+        // gaps and text would come out too small to see.
         let src = self.style_selected(kind);
-        if kind != StyleKind::Dim || !self.clone_style_as(kind, &src, &name, h) {
+        let from_selected = matches!(kind, StyleKind::Dim | StyleKind::Text);
+        if !from_selected || !self.clone_style_as(kind, &src, &name, h) {
             self.insert_default_style(kind, &name, h);
         }
         self.set_style_selected(kind, name.clone());

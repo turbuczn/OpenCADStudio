@@ -6527,6 +6527,11 @@ dimstyle =
     .surveyors-units = Геодезически единици
 
 style-manager =
+    .use-big-font = Use Big Font
+    .number-field-range = Use digits and a decimal point. Enter a value from __ocs_fmt_0__ to __ocs_fmt_1__.
+    .number-field-non-negative = Use digits and a decimal point. Enter 0 or a positive number.
+    .one-field-needs-fixing = 1 field needs fixing before Apply.
+    .fields-need-fixing = __ocs_fmt_0__ fields need fixing before Apply.
     .import-styles = Импортиране на стилове
     .select-drawing-to-import-styles-from = Изберете чертеж, от който да се импортират стилове
     .select-the-styles-to-import = Изберете стиловете за импортиране

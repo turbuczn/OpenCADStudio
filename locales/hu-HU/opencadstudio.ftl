@@ -6505,6 +6505,11 @@ dimstyle =
     .surveyors-units = Földmérési egységek
 
 style-manager =
+    .use-big-font = Nagy betűtípus használata
+    .number-field-range = Számjegyeket és tizedespontot használjon. Adjon meg egy értéket __ocs_fmt_0__ és __ocs_fmt_1__ között.
+    .number-field-non-negative = Számjegyeket és tizedespontot használjon. Adjon meg 0-t vagy pozitív számot.
+    .one-field-needs-fixing = Az alkalmazás előtt 1 mezőt javítani kell.
+    .fields-need-fixing = Az alkalmazás előtt __ocs_fmt_0__ mezőt javítani kell.
     .import-styles = Stílusok importálása
     .select-drawing-to-import-styles-from = Válassza ki a rajzot, amelyből stílusokat szeretne importálni
     .select-the-styles-to-import = Válassza ki az importálandó stílusokat

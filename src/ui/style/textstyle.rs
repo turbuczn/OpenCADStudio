@@ -5,7 +5,7 @@ use crate::t;
 use crate::ui::style::common::muted_style;
 use crate::ui::style::form::field_style;
 use iced::widget::{
-    button, canvas, checkbox, column, container, row, scrollable, text, text_input,
+    button, canvas, checkbox, column, container, row, scrollable, text, text_input, Space,
 };
 use iced::{mouse, Background, Element, Length, Point, Rectangle, Theme};
 use std::borrow::Cow;
@@ -26,6 +26,12 @@ pub struct TextStyleView<'a> {
     pub height_buf: &'a str,
     pub bigfont_buf: &'a str,
     pub ttf_buf: &'a str,
+    /// Why each number field's text cannot be applied, if it cannot.
+    pub width_error: Option<Cow<'static, str>>,
+    pub oblique_error: Option<Cow<'static, str>>,
+    pub height_error: Option<Cow<'static, str>>,
+    pub invalid_fields: usize,
+    pub use_big_font: bool,
     /// The TrueType font style (typeface flags).
     pub bold: bool,
     pub italic: bool,
@@ -228,20 +234,49 @@ fn input_row<'a>(
     field: &'static str,
     read_only: bool,
 ) -> Element<'a, Message> {
+    number_row(label, placeholder, value, field, read_only, None)
+}
+
+/// An input row; with an `error`, the field turns red and the reason shows
+/// under it.
+fn number_row<'a>(
+    label: Cow<'static, str>,
+    placeholder: Cow<'static, str>,
+    value: &'a str,
+    field: &'static str,
+    read_only: bool,
+    error: Option<Cow<'static, str>>,
+) -> Element<'a, Message> {
+    use crate::ui::style::editor_table::{danger_input_style, danger_text_style};
     let control: Element<'a, Message> = if read_only {
         crate::ui::read_only::field(value, 11.0, Length::Fixed(180.0))
     } else {
         text_input(placeholder.as_ref(), value)
             .on_input(move |value| Message::TextStyleEdit { field, value })
-            .style(field_style)
+            .style(if error.is_some() {
+                danger_input_style
+            } else {
+                field_style
+            })
             .size(11)
             .width(180)
             .into()
     };
-    row![text(label).size(11).style(muted_style).width(150), control]
+    let line = row![text(label).size(11).style(muted_style).width(150), control]
         .spacing(8)
-        .align_y(iced::Center)
-        .into()
+        .align_y(iced::Center);
+    match error {
+        Some(error) => column![
+            line,
+            row![
+                Space::new().width(158),
+                text(error).size(10).style(danger_text_style).width(Length::Fill)
+            ]
+        ]
+        .spacing(3)
+        .into(),
+        None => line.into(),
+    }
 }
 
 fn toggle<'a>(
@@ -367,12 +402,18 @@ pub fn view_window<'a>(
                     "font",
                     v.read_only
                 ),
+                toggle(
+                    t!("Use Big Font"),
+                    v.use_big_font,
+                    "use_big_font",
+                    v.read_only || ttf,
+                ),
                 input_row(
                     t!("Big font"),
                     t!("big-font file…"),
                     v.bigfont_buf,
                     "bigfont",
-                    v.read_only
+                    v.read_only || !v.use_big_font,
                 ),
                 input_row(
                     t!("System font"),
@@ -393,7 +434,7 @@ pub fn view_window<'a>(
         }
         _ => column![
             text(t!("Size")).size(11).style(primary_style),
-            input_row(
+            number_row(
                 if v.annotative {
                     t!("Paper text height")
                 } else {
@@ -403,21 +444,24 @@ pub fn view_window<'a>(
                 v.height_buf,
                 "height",
                 v.read_only,
+                v.height_error,
             ),
             text(t!("Effects")).size(11).style(primary_style),
-            input_row(
+            number_row(
                 t!("Width factor"),
                 "1.0".into(),
                 v.width_buf,
                 "width",
-                v.read_only
+                v.read_only,
+                v.width_error,
             ),
-            input_row(
+            number_row(
                 t!("Oblique angle"),
                 "0.0".into(),
                 v.oblique_buf,
                 "oblique",
-                v.read_only
+                v.read_only,
+                v.oblique_error,
             ),
             row![
                 toggle(t!("Backward"), v.backward, "backward", v.read_only),
@@ -493,6 +537,11 @@ pub fn view_window<'a>(
         on_apply: Message::TextStyleApply,
         read_only: v.read_only,
         in_use_filter: None,
+        apply_blocked: match v.invalid_fields {
+            0 => None,
+            1 => Some(t!("1 field needs fixing before Apply.")),
+            count => Some(crate::tf!("{count} fields need fixing before Apply.")),
+        },
         editor,
     })
 }

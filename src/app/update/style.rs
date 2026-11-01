@@ -695,6 +695,11 @@ impl OpenCADStudio {
     }
 
     pub(super) fn on_text_style_apply(&mut self) -> Task<Message> {
+        // A field that cannot be applied keeps Apply off (the window says
+        // which); nothing is written until it is fixed.
+        if self.textstyle_draft.invalid_fields() > 0 {
+            return Task::none();
+        }
         self.flush_textstyle_draft();
         self.style_stage_commit();
         // Re-base the draft on the stored values so a second Apply is a no-op.

@@ -6524,6 +6524,11 @@ dimstyle =
     .surveyors-units = Maanmittausyksiköt
 
 style-manager =
+    .use-big-font = Use Big Font
+    .number-field-range = Use digits and a decimal point. Enter a value from __ocs_fmt_0__ to __ocs_fmt_1__.
+    .number-field-non-negative = Use digits and a decimal point. Enter 0 or a positive number.
+    .one-field-needs-fixing = 1 field needs fixing before Apply.
+    .fields-need-fixing = __ocs_fmt_0__ fields need fixing before Apply.
     .import-styles = Tuo tyylejä
     .select-drawing-to-import-styles-from = Valitse piirustus, josta tyylit tuodaan
     .select-the-styles-to-import = Valitse tuotavat tyylit

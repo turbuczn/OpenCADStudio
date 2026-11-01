@@ -6525,6 +6525,11 @@ dimstyle =
     .surveyors-units = Landmeeteenheden
 
 style-manager =
+    .use-big-font = Use Big Font
+    .number-field-range = Use digits and a decimal point. Enter a value from __ocs_fmt_0__ to __ocs_fmt_1__.
+    .number-field-non-negative = Use digits and a decimal point. Enter 0 or a positive number.
+    .one-field-needs-fixing = 1 field needs fixing before Apply.
+    .fields-need-fixing = __ocs_fmt_0__ fields need fixing before Apply.
     .import-styles = Stijlen importeren
     .select-drawing-to-import-styles-from = Tekening selecteren om stijlen uit te importeren
     .select-the-styles-to-import = Selecteer de stijlen die u wilt importeren

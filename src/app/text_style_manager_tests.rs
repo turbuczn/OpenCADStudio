@@ -194,3 +194,98 @@ fn merged_xref_text_style_is_read_only() {
         "Plan|Notes"
     );
 }
+
+#[test]
+fn a_value_that_cannot_be_applied_keeps_apply_off_until_fixed() {
+    let (mut app, _, _) = app_with_exact_style();
+    open_on(&mut app, "Exact");
+    let _ = app.update(Message::TextStyleEdit {
+        field: "width",
+        value: "0".to_string(),
+    });
+    let _ = app.update(Message::TextStyleEdit {
+        field: "height",
+        value: "3.5".to_string(),
+    });
+    let _ = app.update(Message::TextStyleApply);
+
+    assert_eq!(stored(&app, "Exact").unwrap().height, 2.123456789);
+    assert!(!app.tabs[app.active_tab].dirty);
+    assert_eq!(app.textstyle_draft.width.text, "0");
+    assert_eq!(app.textstyle_draft.invalid_fields(), 1);
+
+    let _ = app.update(Message::TextStyleEdit {
+        field: "width",
+        value: "0.8".to_string(),
+    });
+    let _ = app.update(Message::TextStyleApply);
+    let style = stored(&app, "Exact").unwrap();
+    assert_eq!((style.width_factor, style.height), (0.8, 3.5));
+}
+
+#[test]
+fn a_new_style_starts_from_the_selected_one() {
+    let (mut app, _, _) = app_with_exact_style();
+    open_on(&mut app, "Exact");
+    let _ = app.update(Message::TextStyleDialogNew);
+
+    let new = app.textstyle_selected.clone();
+    assert_ne!(new, "Exact");
+    let mut expected = exact_style(&new);
+    expected.handle = stored(&app, &new).unwrap().handle;
+    assert_eq!(stored(&app, &new), Some(expected));
+}
+
+#[test]
+fn use_big_font_clears_the_file_and_a_truetype_font_turns_it_off() {
+    let (mut app, _, _) = app_with_exact_style();
+    let i = app.active_tab;
+    let doc = &mut app.tabs[i].scene.document;
+    doc.text_styles.get_mut("Exact").unwrap().big_font_file = "gbcbig.shx".to_string();
+    open_on(&mut app, "Exact");
+    assert!(app.textstyle_draft.big_font_on);
+
+    let _ = app.update(Message::TextStyleToggle("use_big_font"));
+    let _ = app.update(Message::TextStyleEdit {
+        field: "bigfont",
+        value: "ignored.shx".to_string(),
+    });
+    let _ = app.update(Message::TextStyleApply);
+    assert!(stored(&app, "Exact").unwrap().big_font_file.is_empty());
+
+    let _ = app.update(Message::TextStyleToggle("use_big_font"));
+    let _ = app.update(Message::TextStyleEdit {
+        field: "bigfont",
+        value: "chineset.shx".to_string(),
+    });
+    let _ = app.update(Message::TextStyleEdit {
+        field: "ttf",
+        value: "Arial".to_string(),
+    });
+    assert!(!app.textstyle_draft.big_font_on);
+    let _ = app.update(Message::TextStyleApply);
+    assert!(stored(&app, "Exact").unwrap().big_font_file.is_empty());
+}
+
+#[test]
+fn the_window_names_the_field_to_fix_and_why() {
+    let (mut app, _, _) = app_with_exact_style();
+    open_on(&mut app, "Exact");
+    let _ = app.update(Message::TextStyleDialogTab(1));
+    let _ = app.update(Message::TextStyleEdit {
+        field: "oblique",
+        value: "90".to_string(),
+    });
+
+    let mut simulator = iced_test::Simulator::with_size(
+        iced::Settings::default(),
+        iced::Size::new(1280.0, 800.0),
+        app.view_main(),
+    );
+    for shown in [
+        "1 field needs fixing before Apply.",
+        "Use digits and a decimal point. Enter a value from -85 to 85.",
+    ] {
+        assert!(simulator.find(shown).is_ok(), "{shown:?} is not shown");
+    }
+}
