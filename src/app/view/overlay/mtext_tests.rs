@@ -237,7 +237,7 @@ fn every_popup_opens_under_its_own_trigger_inside_the_window() {
                 EditorMenu::Fraction => unreachable!("opened from More"),
                 EditorMenu::Style | EditorMenu::NewStyle => unreachable!("beside the Style list"),
                 EditorMenu::Background => label!("use-mask"),
-                EditorMenu::Position => label!("direction-style"),
+                EditorMenu::Position => label!("normal"),
             };
             let item = bounds_of(&mut ui, first);
             assert!(item.y >= trigger.y + trigger.height, "{menu:?} {size:?}");

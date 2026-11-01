@@ -142,19 +142,16 @@ fn the_columns_sit_side_by_side_and_stack_in_a_narrow_window() {
     let font = shown(&mut wide, "Font style");
     let preview = shown(&mut wide, "Sample text");
     assert!(preview.x > font.x + font.width, "{font:?} {preview:?}");
+    shown(&mut wide, "Set Current");
     drop(wide);
 
-    // The modal keeps its size; a narrow window makes it narrow.
+    // The modal keeps its size; a narrow window makes it narrow. Where the
+    // columns stack, the toolbar shows icons only, the names as hints.
     let mut narrow = window(&app, 780.0);
     let summary = shown(&mut narrow, "On Apply");
     let font = shown(&mut narrow, "Font style");
     assert!(summary.y < font.y, "{summary:?} {font:?}");
-    drop(narrow);
-
-    // Narrower still, the toolbar shows icons only, the names as hints.
-    let mut compact = window(&app, 600.0);
-    assert!(compact.find("Set Current".to_string()).is_err());
-    shown(&mut compact, "On Apply");
+    assert!(narrow.find("Set Current".to_string()).is_err());
 }
 
 #[test]

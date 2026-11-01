@@ -289,7 +289,7 @@ fn the_window_names_the_field_to_fix_and_why() {
     );
     for shown in [
         "1 field needs fixing before Apply.",
-        "Use digits and a decimal point. Enter a value from -85 to 85.",
+        "Must be between \u{2212}85° and 85°.",
     ] {
         assert!(simulator.find(shown).is_ok(), "{shown:?} is not shown");
     }

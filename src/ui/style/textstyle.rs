@@ -48,6 +48,8 @@ pub struct TextStyleView<'a> {
     pub invalid_fields: usize,
     pub use_big_font: bool,
     pub font_picker: &'a FontPickerState,
+    /// What the last font switch turned off.
+    pub turned_off: Option<String>,
     /// What Apply does to the texts that use the style, one line each.
     pub apply_summary: Vec<String>,
     pub preview: Preview,
@@ -359,10 +361,7 @@ fn properties<'a>(v: &TextStyleView<'a>) -> Element<'a, Message> {
         .align_y(iced::Center)
         .into()
     };
-    let font = group(
-        t!("Font"),
-        vec![
-            labelled_row(
+    let mut font_rows = vec![labelled_row(
                 t!("Font"),
                 crate::ui::font_picker::view(crate::ui::font_picker::FontPicker {
                     state: v.font_picker,
@@ -376,7 +375,17 @@ fn properties<'a>(v: &TextStyleView<'a>) -> Element<'a, Message> {
                     read_only: v.read_only,
                     on_event: Message::TextStyleFont,
                 }),
-            ),
+            )];
+    if let Some(turned_off) = &v.turned_off {
+        font_rows.push(
+            container(text(turned_off.clone()).size(11))
+                .padding([6, 10])
+                .width(Length::Fill)
+                .style(note_style)
+                .into(),
+        );
+    }
+    font_rows.extend([
             labelled_row(t!("Font style"), face_style),
             toggle(
                 t!("Use Big Font"),
@@ -393,8 +402,8 @@ fn properties<'a>(v: &TextStyleView<'a>) -> Element<'a, Message> {
                 None,
                 None,
             ),
-        ],
-    );
+        ]);
+    let font = group(t!("Font"), font_rows);
     let size = group(
         t!("Size"),
         vec![
@@ -512,20 +521,24 @@ fn apply_summary<'a>(v: &TextStyleView<'a>) -> Option<Element<'a, Message>> {
         )
         .padding([9, 10])
         .width(Length::Fill)
-        .style(|theme: &Theme| {
-            let primary = theme.palette().primary;
-            container::Style {
-                background: Some(primary.weak.color.scale_alpha(0.25).into()),
-                border: iced::Border {
-                    color: primary.base.color.scale_alpha(0.6),
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                ..Default::default()
-            }
-        })
+        .style(note_style)
         .into(),
     )
+}
+
+/// A framed note in the accent colour: what Apply does, what a font switch
+/// turned off.
+fn note_style(theme: &Theme) -> container::Style {
+    let primary = theme.palette().primary;
+    container::Style {
+        background: Some(primary.weak.color.scale_alpha(0.25).into()),
+        border: iced::Border {
+            color: primary.base.color.scale_alpha(0.6),
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..Default::default()
+    }
 }
 
 /// The preview with its sample text field, and where the style is used.
@@ -597,10 +610,9 @@ fn preview_and_usage<'a>(v: &TextStyleView<'a>) -> Element<'a, Message> {
     .into()
 }
 
-/// Below this width the two columns stack.
+/// Below this width the two columns stack and the toolbar shows its icons
+/// only.
 const STACK_BELOW: f32 = 920.0;
-/// Below this width the toolbar shows its icons only.
-const COMPACT_BELOW: f32 = 640.0;
 
 pub fn view_window<'a>(
     v: TextStyleView<'a>,
@@ -663,7 +675,7 @@ fn layout<'a>(
             count => Some(crate::tf!("{count} fields need fixing before Apply.")),
         },
         rows: Some(&v.rows),
-        compact: width < COMPACT_BELOW,
+        compact: narrow,
         editor,
     })
 }

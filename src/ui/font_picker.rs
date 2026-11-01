@@ -6,10 +6,10 @@
 
 use crate::app::Message;
 use crate::t;
-use crate::ui::style::common::muted_style;
+use crate::ui::style::common::{muted_style, readable_accent};
 use codec::Document;
 use iced::widget::{button, column, container, row, scrollable, text, text_input, Space};
-use iced::{Background, Border, Color, Element, Length, Theme};
+use iced::{Background, Border, Color, Element, Font, Length, Theme};
 use std::borrow::Cow;
 use std::path::Path;
 
@@ -138,8 +138,9 @@ impl Section {
 pub struct FontEntry {
     pub choice: FontChoice,
     pub section: Section,
-    /// The drawing names the font, but nothing here draws it.
-    pub missing: bool,
+    /// The drawing names the font, but nothing here draws it: the font
+    /// drawn in its place.
+    pub missing: Option<String>,
 }
 
 /// Every font the picker lists, in section order. `style_default` puts the
@@ -148,7 +149,7 @@ pub fn catalogue(doc: &Document, style_default: bool) -> Vec<FontEntry> {
     let entry = |choice, section| FontEntry {
         choice,
         section,
-        missing: false,
+        missing: None,
     };
     let mut entries = Vec::new();
     if style_default {
@@ -181,40 +182,75 @@ pub fn catalogue(doc: &Document, style_default: bool) -> Vec<FontEntry> {
     entries
 }
 
-/// The fonts the drawing's text styles use, each once, and whether it is
-/// missing (drawn with the Standard stroke font instead).
-fn drawing_fonts(doc: &Document) -> Vec<(FontChoice, bool)> {
+/// The font `style` draws with, as the picker names it; `None` when the
+/// style names none.
+pub fn style_font(style: &codec::tables::TextStyle) -> Option<FontChoice> {
+    let family = style.true_type_font.trim();
+    if !family.is_empty() {
+        return Some(FontChoice::TrueType(family.to_string()));
+    }
+    if style.font_file.trim().is_empty() {
+        return None;
+    }
+    Some(
+        match FontChoice::of_name(&crate::io::font_repo::font_key(&style.font_file)) {
+            // A bare stroke name (`txt`) is read as its SHX file.
+            FontChoice::Stroke(name) => FontChoice::Stroke(stroke_file(&name)),
+            other => other,
+        },
+    )
+}
+
+/// The fonts the drawing's text styles use, each once, and for a missing
+/// one the font drawn instead.
+fn drawing_fonts(doc: &Document) -> Vec<(FontChoice, Option<String>)> {
     use crate::scene::text::sysfont;
     let base = doc
         .source_path
         .as_deref()
         .map(Path::new)
         .and_then(|p| p.parent());
-    let mut fonts: Vec<(FontChoice, bool)> = Vec::new();
+    let mut fonts: Vec<(FontChoice, Option<String>)> = Vec::new();
     // A shape file entry (linetype symbols) is not a text font.
     for style in doc.text_styles.iter().filter(|style| !style.is_shape_file) {
-        let family = style.true_type_font.trim();
-        let font = if !family.is_empty() {
-            let missing = !sysfont::has_family(family)
-                && sysfont::family_for_reference(&style.font_file).is_none();
-            (FontChoice::TrueType(family.to_string()), missing)
-        } else if style.font_file.trim().is_empty() {
+        let Some(font) = style_font(style) else {
             continue;
-        } else {
-            let file = crate::io::font_repo::font_key(&style.font_file);
-            let missing = crate::io::font_repo::shx_file_missing(&style.font_file, base);
-            match FontChoice::of_name(&file) {
-                // A bare stroke name (`txt`) is read as its SHX file.
-                FontChoice::Stroke(name) => (FontChoice::Stroke(stroke_file(&name)), missing),
-                other => (other, missing),
-            }
         };
-        if !fonts.iter().any(|(known, _)| known.same_font(&font.0)) {
-            fonts.push(font);
+        let missing = match &font {
+            FontChoice::TrueType(family) => {
+                !sysfont::has_family(family)
+                    && sysfont::family_for_reference(&style.font_file).is_none()
+            }
+            _ => crate::io::font_repo::shx_file_missing(&style.font_file, base),
+        };
+        if !fonts.iter().any(|(known, _)| known.same_font(&font)) {
+            let drawn_with = missing.then(|| drawn_with(&font));
+            fonts.push((font, drawn_with));
         }
     }
     fonts.sort_by_key(|(font, _)| font.label().to_lowercase());
     fonts
+}
+
+/// The font the drawing draws in place of a missing `choice`, by the name the
+/// picker lists it under: a bundled stroke font of its name (a missing
+/// `ISOCPEUR` draws with the ISO strokes), else Standard.
+pub fn drawn_with(choice: &FontChoice) -> String {
+    use crate::scene::text::font_face::Face;
+    use crate::scene::text::lff;
+    let name = match choice {
+        FontChoice::StyleDefault => return String::new(),
+        FontChoice::Stroke(name) | FontChoice::TrueType(name) => name,
+    };
+    match Face::resolve(name) {
+        Face::Lff(font) => STROKE_FONTS
+            .iter()
+            .find(|(label, _)| std::ptr::eq(lff::get_font(label), font))
+            .map_or_else(|| font.name.clone(), |(label, _)| label.to_string()),
+        Face::Ttf { family, .. } => family,
+        Face::Shx { path, .. } => crate::io::font_repo::font_key(&path),
+        Face::WithBig { .. } => name.clone(),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -296,10 +332,13 @@ impl FontPickerState {
         .then_some(typed)
     }
 
-    fn is_missing(&self, choice: &FontChoice) -> bool {
+    /// The font drawn in place of `choice`, when the drawing names it but
+    /// nothing here has it.
+    fn drawn_instead(&self, choice: &FontChoice) -> Option<&str> {
         self.entries
             .iter()
-            .any(|entry| entry.missing && entry.choice.same_font(choice))
+            .filter(|entry| entry.choice.same_font(choice))
+            .find_map(|entry| entry.missing.as_deref())
     }
 }
 
@@ -315,19 +354,69 @@ pub struct FontPicker<'a> {
 }
 
 const ROW_H: f32 = 22.0;
-/// Wide enough for a name, the missing note and the file side by side.
-const POPUP_W: f32 = 340.0;
+/// The narrowest list: a name and the missing note or the file side by side.
+/// A wider field gets a list of its own width.
+const POPUP_MIN_W: f32 = 260.0;
 
-fn kind_badge<'a>(choice: &FontChoice, missing: bool) -> Element<'a, Message> {
-    if missing {
-        return crate::ui::icons::themed_warning(crate::ui::icons::WARNING, 12.0);
+const BOLD: Font = Font {
+    weight: iced::font::Weight::Bold,
+    ..Font::DEFAULT
+};
+
+/// What a list row is drawn on: the popup, or the highlight of the font in
+/// use.
+fn row_background(theme: &Theme, active: bool) -> Color {
+    let palette = theme.palette();
+    if active {
+        palette.primary.weak.color
+    } else {
+        palette.background.weak.color
     }
-    let badge = match choice {
-        FontChoice::StyleDefault => "",
-        FontChoice::Stroke(_) => "SHX",
-        FontChoice::TrueType(_) => "TT",
+}
+
+/// Secondary text on a row (the file name, a section title), still easy to
+/// read.
+fn secondary_text(theme: &Theme, active: bool) -> Color {
+    let palette = theme.palette();
+    let background = row_background(theme, active);
+    let text = if active {
+        palette.primary.weak.text
+    } else {
+        palette.background.base.text
     };
-    text(badge).size(8).style(muted_style).width(22).into()
+    readable_accent(
+        crate::ui::style::chrome::mix(background, text, 0.6),
+        background,
+        text,
+    )
+}
+
+/// The kind tag: SHX grey, TT green, a missing font's "!" orange. The
+/// theme's colour tints the tag and, made readable, writes its letters.
+fn kind_badge<'a>(choice: &FontChoice, missing: bool) -> Element<'a, Message> {
+    let (badge, accent): (&str, fn(&Theme) -> Color) = match choice {
+        _ if missing => ("!", |theme| theme.palette().warning.base.color),
+        FontChoice::StyleDefault => return Space::new().width(26).into(),
+        FontChoice::Stroke(_) => ("SHX", |theme| theme.palette().background.base.text),
+        FontChoice::TrueType(_) => ("TT", |theme| theme.palette().success.base.color),
+    };
+    container(text(badge).size(8).font(BOLD))
+        .center_x(26)
+        .padding([1, 0])
+        .style(move |theme: &Theme| {
+            let base = theme.palette().background.base;
+            let fill = crate::ui::style::chrome::mix(base.color, accent(theme), 0.3);
+            container::Style {
+                background: Some(Background::Color(fill)),
+                text_color: Some(readable_accent(accent(theme), fill, base.text)),
+                border: Border {
+                    radius: 3.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        })
+        .into()
 }
 
 fn entry_row<'a>(
@@ -336,22 +425,31 @@ fn entry_row<'a>(
     on_event: fn(FontPickerEvent) -> Message,
 ) -> Element<'a, Message> {
     let mut line = row![
-        kind_badge(&entry.choice, entry.missing),
-        text(entry.choice.label().into_owned()).size(11)
+        kind_badge(&entry.choice, entry.missing.is_some()),
+        text(entry.choice.label().into_owned()).size(11),
+        Space::new().width(Length::Fill),
     ]
     .spacing(6)
     .align_y(iced::Center);
-    if entry.missing {
+    if let Some(font) = &entry.missing {
         line = line.push(
-            text(t!("missing · drawn with Standard"))
-                .size(9)
-                .style(muted_style),
+            text(crate::tf!("missing · drawn with {font}"))
+                .size(10)
+                .style(move |theme: &Theme| text::Style {
+                    color: Some(readable_accent(
+                        theme.palette().warning.base.color,
+                        row_background(theme, active),
+                        theme.palette().background.base.text,
+                    )),
+                }),
         );
-    }
-    line = line.push(Space::new().width(Length::Fill));
-    if let FontChoice::Stroke(file) = &entry.choice {
+    } else if let FontChoice::Stroke(file) = &entry.choice {
         if *file != entry.choice.label() {
-            line = line.push(text(file.clone()).size(9).style(muted_style));
+            line = line.push(text(file.clone()).size(10).style(move |theme: &Theme| {
+                text::Style {
+                    color: Some(secondary_text(theme, active)),
+                }
+            }));
         }
     }
     button(line)
@@ -385,7 +483,7 @@ pub fn view<'a>(picker: FontPicker<'a>) -> Element<'a, Message> {
         on_event,
     } = picker;
     let label = selected.label().into_owned();
-    let missing = state.is_missing(&selected);
+    let missing = state.drawn_instead(&selected).is_some();
     let shown_file = match &selected {
         FontChoice::StyleDefault => "",
         _ if file.trim().eq_ignore_ascii_case(&label) => "",
@@ -418,7 +516,7 @@ pub fn view<'a>(picker: FontPicker<'a>) -> Element<'a, Message> {
         .spacing(4)
         .align_y(iced::Center);
     if !shown_file.is_empty() {
-        head = head.push(text(shown_file).size(9).style(muted_style));
+        head = head.push(text(shown_file).size(10).style(muted_style));
     }
     let head = container(head.push(caret).align_y(iced::Center))
         .padding([0, 6])
@@ -453,7 +551,15 @@ pub fn view<'a>(picker: FontPicker<'a>) -> Element<'a, Message> {
         if section != Some(entry.section) && entry.choice != FontChoice::StyleDefault {
             section = Some(entry.section);
             list = list.push(
-                container(text(entry.section.title()).size(9).style(muted_style)).padding([4, 6]),
+                container(
+                    text(entry.section.title().to_uppercase())
+                        .size(9)
+                        .font(BOLD)
+                        .style(|theme: &Theme| text::Style {
+                            color: Some(secondary_text(theme, false)),
+                        }),
+                )
+                .padding(iced::Padding::from([4, 6]).top(7)),
             );
         }
         list = list.push(entry_row(
@@ -470,10 +576,16 @@ pub fn view<'a>(picker: FontPicker<'a>) -> Element<'a, Message> {
     let popup = container(scrollable(list).height(Length::Fixed(300.0)))
         .style(container::bordered_box)
         .padding(2);
+    // The list opens centred under the field: as wide as the field, it lines
+    // up with it and stays in the field's column.
+    let popup_width = match width {
+        Length::Fixed(field) if field < POPUP_MIN_W => Some(Length::Fixed(POPUP_MIN_W)),
+        _ => None,
+    };
     crate::ui::color_select::editable_drop_down_below(
         head.into(),
         popup.into(),
-        Some(Length::Fixed(POPUP_W)),
+        popup_width,
         Length::Shrink,
         on_event(FontPickerEvent::Toggle),
         state.open,

@@ -94,6 +94,8 @@ mod text_style_manager_tests;
 mod text_style_update_tests;
 #[cfg(test)]
 mod text_style_layout_tests;
+#[cfg(test)]
+mod text_style_ui_tests;
 mod tolerance_dialog;
 mod update;
 pub(crate) use update::style_import::{style_exists as style_import_exists, StyleImportDraft};

@@ -939,6 +939,7 @@ impl OpenCADStudio {
                             invalid_fields: draft.invalid_fields(),
                             use_big_font: draft.big_font_on,
                             font_picker: &self.textstyle_font_picker,
+                            turned_off: draft.turned_off.clone(),
                             apply_summary: apply_summary.clone(),
                             preview: preview.clone(),
                             sample: &self.textstyle_sample,

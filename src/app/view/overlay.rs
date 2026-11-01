@@ -576,30 +576,60 @@ fn mtext_editor_content<'a>(
     };
 
     // ── Row 1: the object's own values, each labelled ──────────────────────
-    // A label above its control; font and width also say where their value
-    // comes from (the style, the text's own, or the style with overrides).
+    // A label above its control; font, height, width and oblique also say,
+    // on a line of their own under the label, where their value comes from:
+    // the style (green), the text's own (red), or the style with overrides
+    // (orange).
     let labelled = |name: std::borrow::Cow<'static, str>,
                     origin: Option<super::super::mtext_editor::ValueOrigin>,
                     control: Element<'a, Message>|
      -> Element<'a, Message> {
         use super::super::mtext_editor::ValueOrigin;
-        let mut caption = row![text(name).size(11)].spacing(4);
-        if let Some(origin) = origin {
-            let origin = match origin {
-                ValueOrigin::Style => crate::tr!("mtext-object-origin", "style"),
-                ValueOrigin::Custom => crate::tr!("mtext-object-origin", "custom"),
-                ValueOrigin::Mixed => crate::tr!("mtext-object-origin", "mixed"),
-            };
-            caption = caption.push(text(format!("· {origin}")).size(11).style(|theme: &Theme| {
-                text::Style {
-                    color: Some(theme.palette().background.strong.color),
-                }
-            }));
-        }
-        // Every control sits in a band of one height, so the captions and the
-        // controls each share one line whatever the control's own height.
+        let mark: Element<'a, Message> = match origin {
+            Some(origin) => {
+                let (label, accent): (_, fn(&Theme) -> iced::Color) = match origin {
+                    ValueOrigin::Style => (crate::tr!("mtext-object-origin", "style"), |theme| {
+                        theme.palette().success.base.color
+                    }),
+                    ValueOrigin::Custom => {
+                        (crate::tr!("mtext-object-origin", "custom"), |theme| {
+                            theme.palette().danger.base.color
+                        })
+                    }
+                    ValueOrigin::Mixed => (crate::tr!("mtext-object-origin", "mixed"), |theme| {
+                        theme.palette().warning.base.color
+                    }),
+                };
+                text(label)
+                    .size(10)
+                    .font(iced::Font {
+                        style: iced::font::Style::Italic,
+                        ..iced::Font::DEFAULT
+                    })
+                    .style(move |theme: &Theme| {
+                        // Readable on the editor's panel, lighter than the
+                        // base in a dark theme and darker in a light one.
+                        let background = theme.palette().background;
+                        text::Style {
+                            color: Some(crate::ui::style::common::readable_accent(
+                                accent(theme),
+                                background.weak.color,
+                                background.base.text,
+                            )),
+                        }
+                    })
+                    .into()
+            }
+            None => iced::widget::Space::new().into(),
+        };
+        // The mark keeps its line when there is none, and every control sits
+        // in a band of one height: the labels, the marks and the controls
+        // each share one line whatever the control's own height.
+        let mark = container(mark).height(13);
         let control = container(control).height(30).center_y(30);
-        iced::widget::column![caption, control].spacing(2).into()
+        iced::widget::column![text(name).size(11), mark, control]
+            .spacing(0)
+            .into()
     };
     let mut style_opts: Vec<String> = if styles.is_empty() {
         vec!["Standard".to_string()]
@@ -618,11 +648,21 @@ fn mtext_editor_content<'a>(
     let annotative = checkbox(ed.annotative)
         .on_toggle(Message::MTextAnnotative)
         .size(14);
+    // Without a font of its own the text draws with the style's, which the
+    // field shows (the mark under the label says "By style").
     let font = ed.font_field();
+    let selected = match &ed.object_style.font {
+        Some(style_font) if font.trim().is_empty() => style_font.clone(),
+        _ => crate::ui::font_picker::FontChoice::of_name(&font),
+    };
+    let file = match &selected {
+        crate::ui::font_picker::FontChoice::Stroke(file) => file.clone(),
+        _ => font,
+    };
     let font_pl = crate::ui::font_picker::view(crate::ui::font_picker::FontPicker {
         state: &ed.font_picker,
-        selected: crate::ui::font_picker::FontChoice::of_name(&font),
-        file: font,
+        selected,
+        file,
         width: iced::Length::Fixed(150.0),
         read_only: false,
         on_event: Message::MTextFontPicker,
@@ -704,7 +744,7 @@ fn mtext_editor_content<'a>(
             "oblique",
             oblique_origin,
             labelled(
-                t!("Oblique"),
+                crate::tr!("mtext-object-origin", "oblique").into(),
                 oblique_origin,
                 row![
                     small_input(

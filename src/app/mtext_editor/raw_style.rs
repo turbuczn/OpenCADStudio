@@ -13,6 +13,8 @@ use std::ops::Range;
 pub(in crate::app) struct ObjectStyle {
     /// The family the style draws with, as bold/italic runs name it.
     pub face: String,
+    /// The style's font as the font picker names it.
+    pub font: Option<crate::ui::font_picker::FontChoice>,
     /// The style's own width factor.
     pub width: f64,
     /// The style's oblique angle, in degrees.
@@ -106,6 +108,7 @@ impl ObjectStyle {
             face: crate::scene::text::sysfont::split_style(&font)
                 .0
                 .to_string(),
+            font: style.and_then(crate::ui::font_picker::style_font),
             width: style
                 .map(|s| s.width_factor)
                 .filter(|w| w.is_finite() && *w > 0.)

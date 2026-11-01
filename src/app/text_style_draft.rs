@@ -52,16 +52,28 @@ impl NumberField {
         if !self.is_modified() || self.typed().is_some() {
             return None;
         }
-        Some(if self.max.is_finite() {
+        Some(if !self.max.is_finite() {
+            crate::t!("Enter 0 or a positive number.")
+        } else if self.min < 0.0 {
+            // Only the oblique angle goes either way of upright.
+            crate::tf!(
+                "Must be between {}° and {}°.",
+                signed(self.min),
+                signed(self.max)
+            )
+        } else {
             crate::tf!(
                 "Use digits and a decimal point. Enter a value from {} to {}.",
                 self.min,
                 self.max
             )
-        } else {
-            crate::t!("Use digits and a decimal point. Enter 0 or a positive number.")
         })
     }
+}
+
+/// `value` with a true minus sign, as a message writes a negative number.
+fn signed(value: f64) -> String {
+    value.to_string().replacen('-', "\u{2212}", 1)
 }
 
 /// The regular face file of common TrueType families, as other programs
@@ -104,6 +116,8 @@ pub(super) struct TextStyleDraft {
     pub(super) big_font_on: bool,
     /// The big font the switch turned off, given back when it is turned on.
     big_font_off: String,
+    /// What the last font switch turned off, to say so.
+    pub(super) turned_off: Option<String>,
 }
 
 impl Default for TextStyleDraft {
@@ -125,6 +139,7 @@ impl TextStyleDraft {
             height: NumberField::new(format!("{:.4}", style.height), 0.0, f64::INFINITY),
             big_font_on: !style.big_font_file.trim().is_empty(),
             big_font_off: String::new(),
+            turned_off: None,
         }
     }
 
@@ -154,6 +169,7 @@ impl TextStyleDraft {
         style.font_file = file;
         style.true_type_font.clear();
         style.true_type_font_flags &= !(TTF_FLAG_BOLD | TTF_FLAG_ITALIC);
+        self.turned_off = None;
     }
 
     /// Switch to a TrueType family. The font file names the family's regular
@@ -162,6 +178,21 @@ impl TextStyleDraft {
     /// Vertical text and a big font apply to stroke fonts only.
     pub(super) fn pick_system_font(&mut self, family: String) {
         let style = &mut self.style;
+        let mut off = Vec::new();
+        if style.is_vertical {
+            off.push(crate::t!("Vertical").into_owned());
+        }
+        if self.big_font_on {
+            let file = style.big_font_file.trim();
+            off.push(match file {
+                "" => crate::t!("Big font").into_owned(),
+                file => format!("{} ({file})", crate::t!("Big font")),
+            });
+        }
+        self.turned_off = (!off.is_empty()).then(|| {
+            let list = off.join(", ");
+            crate::tf!("Turned off for the TrueType font: {list}.").into_owned()
+        });
         style.font_file = crate::scene::text::sysfont::face_file(&family, false, false)
             .or_else(|| usual_face_file(&family).map(str::to_string))
             .unwrap_or_default();
@@ -237,7 +268,14 @@ mod tests {
         draft.height.text = "-1".to_string();
         assert_eq!(draft.invalid_fields(), 3);
         assert!(draft.width.error().is_some_and(|error| error.contains("0.01 to 100")));
-        assert!(draft.oblique.error().is_some_and(|error| error.contains("-85 to 85")));
+        assert_eq!(
+            draft.oblique.error().as_deref(),
+            Some("Must be between \u{2212}85° and 85°.")
+        );
+        assert_eq!(
+            draft.height.error().as_deref(),
+            Some("Enter 0 or a positive number.")
+        );
         assert_eq!(draft.resolved(), style());
         assert_eq!(draft.width.text, "200");
 
@@ -264,6 +302,24 @@ mod tests {
         assert!(draft.resolved().big_font_file.is_empty());
         draft.toggle_big_font();
         assert_eq!(draft.resolved(), stored);
+    }
+
+    #[test]
+    fn a_truetype_font_says_what_it_turned_off() {
+        let mut stored = style();
+        stored.is_vertical = true;
+        stored.big_font_file = "gbcbig.shx".to_string();
+        let mut draft = TextStyleDraft::load(&stored);
+        draft.pick_system_font("Arial".to_string());
+        assert_eq!(
+            draft.turned_off.as_deref(),
+            Some("Turned off for the TrueType font: Vertical, Big font (gbcbig.shx).")
+        );
+        // Another TrueType font has nothing more to turn off.
+        draft.pick_system_font("Verdana".to_string());
+        assert_eq!(draft.turned_off, None);
+        draft.pick_stroke_font("txt.shx".to_string());
+        assert_eq!(draft.turned_off, None);
     }
 
     #[test]

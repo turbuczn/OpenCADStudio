@@ -45,7 +45,7 @@ fn the_drawing_fonts_come_first_and_a_missing_one_is_marked() {
     let drawing: Vec<_> = entries
         .iter()
         .take_while(|entry| entry.section == Section::Drawing)
-        .map(|entry| (entry.choice.label().into_owned(), entry.missing))
+        .map(|entry| (entry.choice.label().into_owned(), entry.missing.is_some()))
         .collect();
     assert!(
         drawing.contains(&("vnarial.shx".to_string(), true)),
@@ -153,7 +153,7 @@ fn the_open_list_shows_its_sections_in_the_window() {
         iced::Size::new(1280.0, 800.0),
         app.view_main(),
     );
-    for shown in ["In this drawing", "Stroke fonts (SHX)", "isocp.shx"] {
+    for shown in ["IN THIS DRAWING", "STROKE FONTS (SHX)", "isocp.shx"] {
         assert!(simulator.find(shown).is_ok(), "{shown:?} is not shown");
     }
 }

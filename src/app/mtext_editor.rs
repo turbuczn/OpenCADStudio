@@ -780,6 +780,10 @@ impl super::OpenCADStudio {
             }
         }
         state.seed_object_values(&self.tabs[self.active_tab].scene.document);
+        // The Font field marks a missing font before the list is opened.
+        state
+            .font_picker
+            .refresh(&self.tabs[self.active_tab].scene.document, true);
         // A rotation typed for a new text turns about the working plane's Z,
         // supported only where that is the drawing's.
         if handle.is_none() && self.tabs[self.active_tab].editing_model_space() {
