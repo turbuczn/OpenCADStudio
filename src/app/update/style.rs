@@ -641,9 +641,18 @@ impl OpenCADStudio {
     /// Load the selected text style into the editor's draft.
     pub(in crate::app) fn load_textstyle_draft(&mut self, tab: usize) {
         let doc = &self.tabs[tab].scene.document;
+        // One walk of the drawing gives the list's counts and the texts of
+        // the selected style.
+        let mut users = crate::app::text_style_users::users_by_style(doc);
+        self.textstyle_counts = users
+            .iter()
+            .map(|(name, texts)| (name.clone(), texts.len()))
+            .collect();
         if let Some(s) = doc.text_styles.get(&self.textstyle_selected) {
             self.textstyle_draft = crate::app::text_style_draft::TextStyleDraft::load(s);
-            self.textstyle_users = crate::app::text_style_users::text_users(doc, &s.name);
+            self.textstyle_users = users
+                .remove(&s.name.to_ascii_lowercase())
+                .unwrap_or_default();
         }
     }
 

@@ -47,6 +47,15 @@ enum Held {
     Own,
 }
 
+/// What kind of text uses the style, as "Where used" counts them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextKind {
+    Text,
+    MText,
+    AttributeDefinition,
+    Attribute,
+}
+
 /// One text that uses the style.
 #[derive(Debug, Clone)]
 pub(super) struct TextUser {
@@ -54,10 +63,43 @@ pub(super) struct TextUser {
     handle: Handle,
     /// The attribute's place in the INSERT.
     attribute: Option<usize>,
+    kind: TextKind,
+    /// The block definition that holds the text.
+    block: Option<Handle>,
     in_block: bool,
     height: Held,
     width: Held,
     oblique: Held,
+}
+
+/// How many texts of each kind use a style, and how many of them sit inside
+/// how many block definitions.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Usage {
+    pub kinds: Vec<(TextKind, usize)>,
+    pub in_blocks: usize,
+    pub blocks: usize,
+}
+
+impl Usage {
+    pub(super) fn of(users: &[TextUser]) -> Self {
+        let kinds = [
+            TextKind::Text,
+            TextKind::MText,
+            TextKind::AttributeDefinition,
+            TextKind::Attribute,
+        ]
+        .into_iter()
+        .map(|kind| (kind, users.iter().filter(|u| u.kind == kind).count()))
+        .filter(|(_, count)| *count > 0)
+        .collect();
+        let blocks: FxHashSet<Handle> = users.iter().filter_map(|u| u.block).collect();
+        Usage {
+            kinds,
+            in_blocks: users.iter().filter(|u| u.in_block).count(),
+            blocks: blocks.len(),
+        }
+    }
 }
 
 impl TextUser {
@@ -86,19 +128,17 @@ fn same(a: f64, b: f64) -> bool {
     (a - b).abs() <= 1e-9 * a.abs().max(b.abs()).max(1.0)
 }
 
-/// The entity handles in external references, and those in block definitions.
-fn xref_and_block_handles(doc: &Document) -> (FxHashSet<Handle>, FxHashSet<Handle>) {
+/// The entity handles in external references, and those in block
+/// definitions with the definition that holds each.
+fn xref_and_block_handles(doc: &Document) -> (FxHashSet<Handle>, FxHashMap<Handle, Handle>) {
     let mut xref = FxHashSet::default();
-    let mut block = FxHashSet::default();
+    let mut block = FxHashMap::default();
     for record in doc.block_records.iter() {
-        let set = if record.flags.is_xref || record.flags.is_xref_overlay {
-            &mut xref
-        } else if record.is_model_space() || record.is_paper_space() {
-            continue;
-        } else {
-            &mut block
-        };
-        set.extend(record.entity_handles.iter().copied());
+        if record.flags.is_xref || record.flags.is_xref_overlay {
+            xref.extend(record.entity_handles.iter().copied());
+        } else if !(record.is_model_space() || record.is_paper_space()) {
+            block.extend(record.entity_handles.iter().map(|h| (*h, record.handle)));
+        }
     }
     (xref, block)
 }
@@ -107,42 +147,60 @@ fn xref_and_block_handles(doc: &Document) -> (FxHashSet<Handle>, FxHashSet<Handl
 /// definitions and the attributes of inserts. Texts in external references
 /// are left out; Apply does not change them.
 pub(super) fn text_users(doc: &Document, style: &str) -> Vec<TextUser> {
+    users_by_style(doc)
+        .remove(&style.to_ascii_lowercase())
+        .unwrap_or_default()
+}
+
+/// The texts of every style, keyed by the style name in ASCII lowercase, in one walk
+/// of the drawing.
+pub(super) fn users_by_style(doc: &Document) -> FxHashMap<String, Vec<TextUser>> {
     let (xref, block) = xref_and_block_handles(doc);
-    let mut users = Vec::new();
+    let mut users: FxHashMap<String, Vec<TextUser>> = FxHashMap::default();
     for entity in doc.entities() {
         let handle = entity.common().handle;
         if xref.contains(&handle) {
             continue;
         }
-        let in_block = block.contains(&handle);
-        let stored = |height: f64, width: f64, oblique: f64, attribute| TextUser {
-            handle,
-            attribute,
-            in_block,
-            height: Held::Stored(height),
-            width: Held::Stored(width),
-            oblique: Held::Stored(oblique),
+        let block = block.get(&handle).copied();
+        let mut push = |style: &str, kind, attribute, height, width, oblique| {
+            users
+                .entry(style.to_ascii_lowercase())
+                .or_default()
+                .push(TextUser {
+                    handle,
+                    attribute,
+                    kind,
+                    block,
+                    in_block: block.is_some(),
+                    height,
+                    width,
+                    oblique,
+                })
+        };
+        let stored = |height: f64, width: f64, oblique: f64| {
+            (
+                Held::Stored(height),
+                Held::Stored(width),
+                Held::Stored(oblique),
+            )
         };
         match entity {
-            EntityType::Text(t) if t.style.eq_ignore_ascii_case(style) => {
-                users.push(stored(t.height, t.width_factor, t.oblique_angle, None))
+            EntityType::Text(t) => {
+                let (h, w, o) = stored(t.height, t.width_factor, t.oblique_angle);
+                push(&t.style, TextKind::Text, None, h, w, o)
             }
-            EntityType::AttributeDefinition(a) if a.text_style.eq_ignore_ascii_case(style) => {
-                users.push(stored(a.height, a.width_factor, a.oblique_angle, None))
+            EntityType::AttributeDefinition(a) => {
+                let (h, w, o) = stored(a.height, a.width_factor, a.oblique_angle);
+                push(&a.text_style, TextKind::AttributeDefinition, None, h, w, o)
             }
             EntityType::Insert(insert) => {
                 for (index, a) in insert.attributes.iter().enumerate() {
-                    if a.text_style.eq_ignore_ascii_case(style) {
-                        users.push(stored(
-                            a.height,
-                            a.width_factor,
-                            a.oblique_angle,
-                            Some(index),
-                        ));
-                    }
+                    let (h, w, o) = stored(a.height, a.width_factor, a.oblique_angle);
+                    push(&a.text_style, TextKind::Attribute, Some(index), h, w, o)
                 }
             }
-            EntityType::MText(t) if t.style.eq_ignore_ascii_case(style) => {
+            EntityType::MText(t) => {
                 let code = |code| {
                     if super::mtext_editor::sets_whole_text(&t.value, code) {
                         Held::Own
@@ -150,14 +208,14 @@ pub(super) fn text_users(doc: &Document, style: &str) -> Vec<TextUser> {
                         Held::FromStyle
                     }
                 };
-                users.push(TextUser {
-                    handle,
-                    attribute: None,
-                    in_block,
-                    height: Held::Stored(t.height),
-                    width: code('W'),
-                    oblique: code('Q'),
-                });
+                push(
+                    &t.style,
+                    TextKind::MText,
+                    None,
+                    Held::Stored(t.height),
+                    code('W'),
+                    code('Q'),
+                )
             }
             _ => {}
         }

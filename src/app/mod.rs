@@ -83,7 +83,7 @@ mod startup;
 pub(crate) mod style_ops;
 mod text_inline;
 mod text_style_draft;
-mod text_style_users;
+pub(crate) mod text_style_users;
 #[cfg(test)]
 mod text_style_data_tests;
 #[cfg(test)]
@@ -92,6 +92,8 @@ mod text_style_font_picker_tests;
 mod text_style_manager_tests;
 #[cfg(test)]
 mod text_style_update_tests;
+#[cfg(test)]
+mod text_style_layout_tests;
 mod tolerance_dialog;
 mod update;
 pub(crate) use update::style_import::{style_exists as style_import_exists, StyleImportDraft};
@@ -1705,7 +1707,13 @@ pub(super) struct OpenCADStudio {
 
     // ── TextStyle Font Browser ────────────────────────────────────────────
     textstyle_selected: String,
-    textstyle_tab: u8,
+    /// How many texts use each text style (ASCII-lowercase name), counted
+    /// with the selected style's texts.
+    textstyle_counts: rustc_hash::FxHashMap<String, usize>,
+    /// The list shows only the styles in use.
+    textstyle_in_use_only: bool,
+    /// The preview's sample text; empty shows the default.
+    textstyle_sample: String,
     textstyle_compare: String,
     /// Working copy of the selected style; written into the document before
     /// any list operation and on Apply.
@@ -5108,7 +5116,10 @@ pub enum Message {
     #[allow(dead_code)]
     TextStyleDialogClose,
     TextStyleDialogSelect(String),
-    TextStyleDialogTab(u8),
+    /// "Styles in use": show only the styles texts use.
+    TextStyleInUseFilter(bool),
+    /// The preview's sample text, as typed.
+    TextStyleSample(String),
     TextStyleDialogCompare(String),
     TextStyleDialogSetCurrent,
     TextStyleDialogNew,
@@ -6078,7 +6089,9 @@ impl OpenCADStudio {
             style_stage: None,
             style_import: None,
             textstyle_selected: "Standard".to_string(),
-            textstyle_tab: 0,
+            textstyle_counts: Default::default(),
+            textstyle_in_use_only: false,
+            textstyle_sample: String::new(),
             textstyle_compare: String::new(),
             textstyle_draft: Default::default(),
             textstyle_font_picker: Default::default(),

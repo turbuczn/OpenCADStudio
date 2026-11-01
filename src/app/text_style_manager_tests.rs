@@ -274,7 +274,6 @@ fn use_big_font_clears_the_file_and_a_truetype_font_turns_it_off() {
 fn the_window_names_the_field_to_fix_and_why() {
     let (mut app, _, _) = app_with_exact_style();
     open_on(&mut app, "Exact");
-    let _ = app.update(Message::TextStyleDialogTab(1));
     let _ = app.update(Message::TextStyleEdit {
         field: "oblique",
         value: "90".to_string(),

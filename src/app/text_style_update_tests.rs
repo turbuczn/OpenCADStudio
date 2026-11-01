@@ -191,7 +191,6 @@ fn the_window_says_how_many_texts_apply_updates() {
     add_text(&mut app, 2.5, 1.0, None);
     add_text(&mut app, 5.0, 1.0, None);
     edit(&mut app, "height", "3.5");
-    let _ = app.update(Message::TextStyleDialogTab(1));
 
     let mut simulator = iced_test::Simulator::with_size(
         iced::Settings::default(),

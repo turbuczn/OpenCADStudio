@@ -13061,8 +13061,12 @@ impl OpenCADStudio {
                 self.load_textstyle_draft(i);
                 Task::none()
             }
-            Message::TextStyleDialogTab(tab) => {
-                self.textstyle_tab = tab;
+            Message::TextStyleInUseFilter(on) => {
+                self.textstyle_in_use_only = on;
+                Task::none()
+            }
+            Message::TextStyleSample(text) => {
+                self.textstyle_sample = text;
                 Task::none()
             }
             Message::TextStyleDialogCompare(name) => {

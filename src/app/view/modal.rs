@@ -876,8 +876,71 @@ impl OpenCADStudio {
                     .unwrap_or_default();
                 let read_only = self.selected_textstyle_is_read_only();
                 let ttf_flags = draft.style.true_type_font_flags;
-                let in_use =
-                    self.style_in_use(crate::app::StyleKind::Text, &self.textstyle_selected);
+                // The list: each style's text count and lock; "Styles in
+                // use" keeps the used ones, the current and the selected.
+                let current = &doc.header.current_text_style_name;
+                let (listed, rows): (Vec<String>, Vec<_>) = doc
+                    .text_styles
+                    .iter()
+                    .map(|s| {
+                        let count = self
+                            .textstyle_counts
+                            .get(&s.name.to_ascii_lowercase())
+                            .copied()
+                            .unwrap_or(0);
+                        let row = crate::ui::style::style_manager::StyleRow {
+                            count,
+                            locked: s.xref_dependent || s.name.contains('|'),
+                        };
+                        (s.name.clone(), row)
+                    })
+                    .filter(|(name, row)| {
+                        !self.textstyle_in_use_only
+                            || row.count > 0
+                            || name.eq_ignore_ascii_case(current)
+                            || name.eq_ignore_ascii_case(&self.textstyle_selected)
+                    })
+                    .unzip();
+                // The preview draws the draft as the drawing would draw it.
+                let resolved =
+                    crate::entities::text_support::resolve_text_style_record(&edited, doc);
+                let ttf = !edited.true_type_font.trim().is_empty();
+                let mut font_label = if ttf {
+                    edited.true_type_font.clone()
+                } else {
+                    edited.font_file.clone()
+                };
+                if draft.big_font_on && !edited.big_font_file.trim().is_empty() {
+                    font_label = format!("{font_label} + {}", edited.big_font_file);
+                }
+                if edited.height > 0.0 {
+                    let mode = if edited.annotative {
+                        crate::t!("Paper height")
+                    } else {
+                        crate::t!("Drawing height")
+                    };
+                    let height = crate::entities::common::format_length(edited.height);
+                    font_label = format!("{font_label} · {mode} {height}");
+                }
+                let preview = crate::ui::style::textstyle::Preview {
+                    font: resolved.font_name,
+                    width_factor: if resolved.is_backward {
+                        -resolved.width_factor
+                    } else {
+                        resolved.width_factor
+                    },
+                    oblique: resolved.oblique_angle,
+                    upside_down: resolved.is_upside_down,
+                    vertical: resolved.is_vertical && !ttf,
+                    text: if self.textstyle_sample.trim().is_empty() {
+                        crate::ui::style::textstyle::default_sample(draft.big_font_on)
+                            .to_string()
+                    } else {
+                        self.textstyle_sample.clone()
+                    },
+                    caption: font_label,
+                };
+                let usage = crate::app::text_style_users::Usage::of(&self.textstyle_users);
                 let compare_opts: Vec<String> = styles
                     .iter()
                     .filter(|name| !name.eq_ignore_ascii_case(&self.textstyle_selected))
@@ -919,15 +982,16 @@ impl OpenCADStudio {
                 sized_flow(ex, 960, 680, |flow| {
                     crate::ui::style::textstyle::view_window(
                         crate::ui::style::textstyle::TextStyleView {
-                            styles: styles.clone(),
+                            styles: listed.clone(),
+                            rows: rows.clone(),
+                            in_use_only: self.textstyle_in_use_only,
                             selected: &self.textstyle_selected,
                             current: &tab.scene.document.header.current_text_style_name,
-                            tab: self.textstyle_tab,
                             compare_name: compare_name.clone(),
                             compare_opts: compare_opts.clone(),
                             comparison_sections: comparison_sections.clone(),
                             read_only,
-                            in_use,
+                            usage: usage.clone(),
                             font_buf: &draft.style.font_file,
                             width_buf: &draft.width.text,
                             oblique_buf: &draft.oblique.text,
@@ -937,10 +1001,15 @@ impl OpenCADStudio {
                             width_error: draft.width.error(),
                             oblique_error: draft.oblique.error(),
                             height_error: draft.height.error(),
+                            width_was: draft.width.was(),
+                            oblique_was: draft.oblique.was(),
+                            height_was: draft.height.was(),
                             invalid_fields: draft.invalid_fields(),
                             use_big_font: draft.big_font_on,
                             font_picker: &self.textstyle_font_picker,
                             apply_summary: apply_summary.clone(),
+                            preview: preview.clone(),
+                            sample: &self.textstyle_sample,
                             bold: ttf_flags & crate::entities::text_support::TTF_FLAG_BOLD != 0,
                             italic: ttf_flags & crate::entities::text_support::TTF_FLAG_ITALIC
                                 != 0,

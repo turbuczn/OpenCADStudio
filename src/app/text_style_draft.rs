@@ -33,6 +33,11 @@ impl NumberField {
         self.text.trim() != self.shown.trim()
     }
 
+    /// The stored value as it was shown, once the field holds another.
+    pub(super) fn was(&self) -> Option<String> {
+        self.is_modified().then(|| self.shown.clone())
+    }
+
     /// The typed value, when the user changed the field to an accepted one.
     fn typed(&self) -> Option<f64> {
         self.is_modified()
