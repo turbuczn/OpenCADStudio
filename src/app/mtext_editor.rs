@@ -32,7 +32,7 @@ mod raw_style;
 pub(in crate::app) use raw_edit::FormatState;
 pub(in crate::app) use raw_list::ListKind;
 pub(in crate::app) use raw_stack::{FractionPart, Script};
-pub(in crate::app) use raw_style::ValueOrigin;
+pub(in crate::app) use raw_style::{sets_whole_text, ValueOrigin};
 
 /// Character-level format toggles applied to the current selection by the
 /// toolbar. Each maps to a DXF MTEXT inline code understood by the renderer

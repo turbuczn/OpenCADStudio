@@ -20,6 +20,12 @@ pub(in crate::app) struct ObjectStyle {
     pub font_flags: (bool, bool),
 }
 
+/// Whether `raw` sets `code` (`\W`, `\Q`, …) for all of its text, so the
+/// text has its own value instead of the style's.
+pub(in crate::app) fn sets_whole_text(raw: &str, code: char) -> bool {
+    !leading_controls(raw, code).is_empty()
+}
+
 /// The `code` controls ahead of the first character that apply to the whole
 /// text: the object defaults. That is a top-level control, or one inside
 /// groups that hold all of the text, as other writers store a whole-text font

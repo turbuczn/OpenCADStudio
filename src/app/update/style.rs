@@ -643,6 +643,7 @@ impl OpenCADStudio {
         let doc = &self.tabs[tab].scene.document;
         if let Some(s) = doc.text_styles.get(&self.textstyle_selected) {
             self.textstyle_draft = crate::app::text_style_draft::TextStyleDraft::load(s);
+            self.textstyle_users = crate::app::text_style_users::text_users(doc, &s.name);
         }
     }
 

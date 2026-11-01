@@ -862,6 +862,18 @@ impl OpenCADStudio {
                     .collect();
                 let draft = &self.textstyle_draft;
                 let edited = draft.resolved();
+                let apply_summary = self
+                    .text_style_baseline(edited.handle)
+                    .map(|old| {
+                        crate::app::text_style_users::summary_lines(
+                            &crate::app::text_style_users::value_changes(
+                                &self.textstyle_users,
+                                old,
+                                &edited,
+                            ),
+                        )
+                    })
+                    .unwrap_or_default();
                 let read_only = self.selected_textstyle_is_read_only();
                 let ttf_flags = draft.style.true_type_font_flags;
                 let in_use =
@@ -928,6 +940,7 @@ impl OpenCADStudio {
                             invalid_fields: draft.invalid_fields(),
                             use_big_font: draft.big_font_on,
                             font_picker: &self.textstyle_font_picker,
+                            apply_summary: apply_summary.clone(),
                             bold: ttf_flags & crate::entities::text_support::TTF_FLAG_BOLD != 0,
                             italic: ttf_flags & crate::entities::text_support::TTF_FLAG_ITALIC
                                 != 0,

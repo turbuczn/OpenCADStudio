@@ -79,12 +79,15 @@ mod startup;
 pub(crate) mod style_ops;
 mod text_inline;
 mod text_style_draft;
+mod text_style_users;
 #[cfg(test)]
 mod text_style_data_tests;
 #[cfg(test)]
 mod text_style_font_picker_tests;
 #[cfg(test)]
 mod text_style_manager_tests;
+#[cfg(test)]
+mod text_style_update_tests;
 mod tolerance_dialog;
 mod update;
 pub(crate) use update::style_import::{style_exists as style_import_exists, StyleImportDraft};
@@ -1704,6 +1707,8 @@ pub(super) struct OpenCADStudio {
     /// any list operation and on Apply.
     textstyle_draft: text_style_draft::TextStyleDraft,
     textstyle_font_picker: crate::ui::font_picker::FontPickerState,
+    /// The texts using the selected style, for the summary before Apply.
+    textstyle_users: Vec<text_style_users::TextUser>,
 
     // ── Color Scheme ──────────────────────────────────────────────────────
     active_theme: Theme,
@@ -6060,6 +6065,7 @@ impl OpenCADStudio {
             textstyle_compare: String::new(),
             textstyle_draft: Default::default(),
             textstyle_font_picker: Default::default(),
+            textstyle_users: Vec::new(),
             // TableStyle dialog
             tablestyle_selected: "Standard".to_string(),
             tablestyle_tab: 0,

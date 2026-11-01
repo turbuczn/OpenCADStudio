@@ -5,7 +5,7 @@ use crate::t;
 use crate::ui::font_picker::{FaceStyle, FontChoice, FontPickerState};
 use crate::ui::style::common::muted_style;
 use crate::ui::style::form::field_style;
-use iced::widget::{canvas, checkbox, column, row, text, text_input, Space};
+use iced::widget::{canvas, checkbox, column, container, row, text, text_input, Space};
 use iced::{mouse, Element, Length, Point, Rectangle, Theme};
 use std::borrow::Cow;
 
@@ -32,6 +32,8 @@ pub struct TextStyleView<'a> {
     pub invalid_fields: usize,
     pub use_big_font: bool,
     pub font_picker: &'a FontPickerState,
+    /// What Apply does to the texts that use the style, one line each.
+    pub apply_summary: Vec<String>,
     /// The TrueType font style (typeface flags).
     pub bold: bool,
     pub italic: bool,
@@ -405,6 +407,24 @@ pub fn view_window<'a>(
         ]
         .spacing(9)
         .into(),
+    };
+    // What Apply will do to the existing texts, under either tab.
+    let content: Element<'a, Message> = if v.apply_summary.is_empty() {
+        content
+    } else {
+        let lines = v
+            .apply_summary
+            .into_iter()
+            .map(|line| text(line).size(11).into());
+        column![
+            content,
+            container(column(lines).spacing(4))
+                .padding(8)
+                .width(Length::Fill)
+                .style(container::bordered_box)
+        ]
+        .spacing(12)
+        .into()
     };
     let status = if v.read_only {
         t!("Referenced style · Read only")

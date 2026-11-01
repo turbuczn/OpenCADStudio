@@ -942,6 +942,17 @@ impl OpenCADStudio {
         self.tabs[i].active_mleader_style = snap.tab_active_mleader.clone();
     }
 
+    /// The text style with this handle as it was before the open manager's
+    /// changes, or as last applied.
+    pub(super) fn text_style_baseline(&self, handle: Handle) -> Option<&TextStyle> {
+        let stage = self.style_stage.as_ref()?;
+        stage
+            .baseline
+            .text_styles
+            .iter()
+            .find(|style| style.handle == handle)
+    }
+
     /// Begin a staging transaction for a freshly-opened style manager.
     pub(super) fn style_stage_begin(&mut self) {
         let dirty_at_open = self.tabs[self.active_tab].dirty;
@@ -957,12 +968,30 @@ impl OpenCADStudio {
     /// undo entry, mark the tab dirty, and rebuild the drawing.
     pub(super) fn style_stage_commit(&mut self) {
         let i = self.active_tab;
-        let Some(stage) = self.style_stage.take() else {
+        let Some(mut stage) = self.style_stage.take() else {
             // No staged edits: a bare Apply has no geometry work to publish.
             self.sync_ribbon_styles();
             return;
         };
         sync_mleaderstyle_dictionary(&mut self.tabs[i].scene.document);
+        // A changed text style carries its new values over to the texts that
+        // follow it, in the same undo step.
+        let doc = &mut self.tabs[i].scene.document;
+        let changed: Vec<(TextStyle, TextStyle)> = doc
+            .text_styles
+            .iter()
+            .filter_map(|new| {
+                let old = stage
+                    .baseline
+                    .text_styles
+                    .iter()
+                    .find(|old| new.handle.is_valid() && old.handle == new.handle)?;
+                (old != new).then(|| (old.clone(), new.clone()))
+            })
+            .collect();
+        for (old, new) in changed {
+            super::text_style_users::update_texts(doc, &old, &new, &mut stage.entities);
+        }
 
         let edited = self.capture_style_state();
         let doc = &self.tabs[i].scene.document;
@@ -1161,8 +1190,8 @@ impl StyleStateSnapshot {
 pub(super) struct StyleStage {
     dirty_at_open: bool,
     baseline: StyleStateSnapshot,
-    /// Entities the transaction changed (a rename rewrites their style name),
-    /// as they were when the manager opened.
+    /// Entities the transaction changed (a rename rewrites their style name,
+    /// Apply their by-style values), as they were when the manager opened.
     entities: FxHashMap<Handle, Arc<codec::EntityType>>,
 }
 
