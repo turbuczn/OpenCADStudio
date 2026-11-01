@@ -266,12 +266,44 @@ fn patch_font(
     Ok(out)
 }
 
-/// The object font and width controls, which clearing a character's
-/// formatting leaves in place.
+/// The object font, width, oblique, tracking and colour controls, which
+/// clearing a character's formatting leaves in place.
 pub(super) fn object_controls(raw: &str) -> Vec<Range<usize>> {
     let mut controls = leading_controls(raw, 'f');
-    controls.extend(leading_controls(raw, 'W'));
+    for code in ['W', 'Q', 'T', 'C'] {
+        controls.extend(leading_controls(raw, code));
+    }
     controls
+}
+
+/// The value of the whole-text `\Q` or `\T`; `None` without one.
+fn object_number(raw: &str, code: char) -> Option<f64> {
+    leading_controls(raw, code)
+        .last()
+        .and_then(|r| raw.get(r.start + 2..r.end.saturating_sub(1)))
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| value.is_finite())
+}
+
+/// Replace the whole-text `code` control with `control` (`None` removes it).
+/// A code that formats only part of the text keeps overriding it.
+fn patch_object_control(
+    raw: &str,
+    code: char,
+    control: Option<String>,
+) -> Result<String, EditError> {
+    let index = SourceIndex::new(raw);
+    let count = index.validate(false)?;
+    let mut patches: Vec<_> = leading_controls(raw, code)
+        .into_iter()
+        .map(|range| (range, String::new()))
+        .collect();
+    if let Some(control) = control {
+        patches.push((0..0, control));
+    }
+    let out = apply_patches(raw, patches)?;
+    index.certify(&out, count)?;
+    Ok(out)
 }
 
 /// Where a first-row value comes from.
@@ -291,6 +323,8 @@ impl MTextEditorState {
         self.object_style = ObjectStyle::of(doc, &self.style);
         self.font = text_font(&raw).map_or_else(String::new, |f| f.name);
         self.width = number_text(base_width(&raw, self.object_style.width).unwrap_or(1.));
+        self.oblique = object_number(&raw, 'Q').map_or_else(|| "0".into(), number_text);
+        self.char_space = object_number(&raw, 'T').map_or_else(|| "0".into(), number_text);
     }
 
     /// What the Font field shows: the selection's font when every selected
@@ -392,6 +426,54 @@ impl crate::app::OpenCADStudio {
             }
         }
         self.rebuild_mtext_preview();
+    }
+
+    /// The oblique or tracking field with nothing selected: the whole-text
+    /// `\Q`/`\T` that opens the source; 0 removes it. The field keeps what
+    /// is typed.
+    pub(in crate::app) fn mtext_object_number(
+        &mut self,
+        field: &str,
+        value: String,
+        number: Option<f64>,
+    ) {
+        let code = if field == "oblique" { 'Q' } else { 'T' };
+        let Some(ed) = self.mtext_editor.as_mut() else {
+            return;
+        };
+        ed.record_undo();
+        let raw = ed.content.text();
+        if let Some(number) = number {
+            let target = (number != 0.).then_some(number);
+            if object_number(&raw, code) != target {
+                let control = target.map(|v| format!("\\{code}{};", number_text(v)));
+                self.set_object_source(patch_object_control(&raw, code, control));
+            }
+        }
+        if let Some(ed) = self.mtext_editor.as_mut() {
+            match code {
+                'Q' => ed.oblique = value,
+                _ => ed.char_space = value,
+            }
+        }
+        self.rebuild_mtext_preview();
+    }
+
+    /// The whole-text colour of a text with no colour of its own (a
+    /// multileader's text, command-line input): a leading `\C`; ByLayer and
+    /// ByBlock remove it.
+    pub(in crate::app) fn mtext_object_color(&mut self, aci: u16) {
+        let Some(ed) = self.mtext_editor.as_mut() else {
+            return;
+        };
+        ed.record_undo();
+        let raw = ed.content.text();
+        let control = (!matches!(aci, 0 | 256)).then(|| format!("\\C{aci};"));
+        if self.set_object_source(patch_object_control(&raw, 'C', control)) {
+            if let Some(ed) = self.mtext_editor.as_mut() {
+                ed.color_aci = aci;
+            }
+        }
     }
 
     /// The font menu with nothing selected: the object font; `[Style default]`
@@ -617,5 +699,57 @@ mod tests {
         // A selection in two fonts shows the text's own (here the style's).
         select(&mut app, 0, 3);
         assert_eq!(ed(&app).font_field(), "");
+    }
+
+    #[test]
+    fn whole_text_oblique_and_tracking_patch_only_the_leading_control() {
+        // Nothing selected: the rest of the source stays byte for byte, and a
+        // run with its own oblique keeps it.
+        let mut app = app(r"\pxqc,t4;a{\Q5;b}\Pc");
+        app.mtext_apply_span_number("oblique", "15".into());
+        assert_eq!(raw(&app), r"\Q15;\pxqc,t4;a{\Q5;b}\Pc");
+        app.mtext_apply_span_number("tracking", "1.2".into());
+        assert_eq!(raw(&app), r"\T1.2;\Q15;\pxqc,t4;a{\Q5;b}\Pc");
+        // A new value replaces the leading control; 0 removes it.
+        app.mtext_apply_span_number("oblique", "-10".into());
+        assert_eq!(raw(&app), r"\Q-10;\T1.2;\pxqc,t4;a{\Q5;b}\Pc");
+        app.mtext_apply_span_number("oblique", "0".into());
+        assert_eq!(raw(&app), r"\T1.2;\pxqc,t4;a{\Q5;b}\Pc");
+        // Half-typed or out of range: shown, nothing changes.
+        app.mtext_apply_span_number("oblique", "9".repeat(3));
+        assert_eq!(raw(&app), r"\T1.2;\pxqc,t4;a{\Q5;b}\Pc");
+        assert_eq!(ed(&app).oblique, "999");
+        // Each change is one undo step.
+        app.mtext_undo();
+        app.mtext_undo();
+        assert_eq!(raw(&app), r"\Q-10;\T1.2;\pxqc,t4;a{\Q5;b}\Pc");
+    }
+
+    #[test]
+    fn reopening_shows_the_whole_text_oblique_and_tracking() {
+        let app = app(r"\Q12.5;\T1.1;ab{\Q3;c}");
+        assert_eq!(ed(&app).oblique, "12.5");
+        assert_eq!(ed(&app).char_space, "1.1");
+        let app = self::app(r"a{\Q3;b}");
+        assert_eq!(ed(&app).oblique, "0");
+    }
+
+    #[test]
+    fn a_whole_text_colour_without_an_object_colour_is_a_leading_control() {
+        let mut app = app(r"a{\C1;b}\Pc");
+        app.command_mtext_input = true;
+        app.mtext_apply_color(codec::types::Color::Index(3));
+        assert_eq!(raw(&app), r"\C3;a{\C1;b}\Pc");
+        assert_eq!(ed(&app).color_aci, 3);
+        app.mtext_apply_color(codec::types::Color::ByLayer);
+        assert_eq!(raw(&app), r"a{\C1;b}\Pc");
+        assert_eq!(ed(&app).color_aci, 256);
+    }
+
+    #[test]
+    fn clearing_formatting_keeps_the_whole_text_oblique_tracking_and_colour() {
+        let mut app = app(r"\Q15;\T1.2;\C3;ab{\Q5;c}");
+        app.mtext_clear_formatting();
+        assert_eq!(raw(&app), r"\Q15;\T1.2;\C3;ab{c}");
     }
 }
