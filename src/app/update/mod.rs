@@ -13073,7 +13073,8 @@ impl OpenCADStudio {
                     "oblique" => draft.oblique.text = value,
                     "height" => draft.height.text = value,
                     "bigfont" => draft.style.big_font_file = value,
-                    "ttf" => draft.style.true_type_font = value,
+                    "ttf" if value.trim().is_empty() => draft.style.true_type_font.clear(),
+                    "ttf" => draft.pick_system_font(value),
                     _ => {}
                 }
                 Task::none()
@@ -13101,11 +13102,9 @@ impl OpenCADStudio {
                 if self.selected_textstyle_is_read_only() {
                     return Task::none();
                 }
-                let s = &mut self.textstyle_draft.style;
-                s.font_file = font_file;
                 // A stroke font replaces the system font, which would
                 // otherwise keep taking precedence.
-                s.true_type_font.clear();
+                self.textstyle_draft.pick_stroke_font(font_file);
                 Task::none()
             }
 

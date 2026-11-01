@@ -80,6 +80,8 @@ pub(crate) mod style_ops;
 mod text_inline;
 mod text_style_draft;
 #[cfg(test)]
+mod text_style_data_tests;
+#[cfg(test)]
 mod text_style_manager_tests;
 mod tolerance_dialog;
 mod update;
@@ -5105,7 +5107,7 @@ pub enum Message {
     },
     /// Commit edits to the selected text style.
     TextStyleApply,
-    /// Select a font from the built-in font list.
+    /// Select a stroke font by its SHX file name.
     TextStyleFontPick(String),
     /// Flip a boolean flag on the selected text style (backward / upside_down /
     /// vertical / annotative), applied immediately.

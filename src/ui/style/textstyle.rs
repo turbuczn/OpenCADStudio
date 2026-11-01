@@ -37,11 +37,37 @@ pub struct TextStyleView<'a> {
     pub rename_buf: &'a str,
 }
 
-const BUILTIN_FONTS: &[&str] = &[
-    "Standard", "ISO", "Simplex", "RomanS", "RomanD", "RomanC", "RomanT", "ItalicC", "ItalicT",
-    "ScriptS", "ScriptC", "GothGBT", "GothGRT", "GothITT", "GreekC", "Symbol", "ISO3098",
-    "Unicode",
+/// The built-in stroke fonts: the name shown, and the SHX file the style
+/// stores, so another program finds the font it names. Each file resolves to
+/// the bundled LFF font of the shown name (`scene::text::lff`).
+const STROKE_FONTS: &[(&str, &str)] = &[
+    ("Standard", "txt.shx"),
+    ("ISO", "isocp.shx"),
+    ("Simplex", "simplex.shx"),
+    ("RomanS", "romans.shx"),
+    ("RomanD", "romand.shx"),
+    ("RomanC", "romanc.shx"),
+    ("RomanT", "romant.shx"),
+    ("ItalicC", "italicc.shx"),
+    ("ItalicT", "italict.shx"),
+    ("ScriptS", "scripts.shx"),
+    ("ScriptC", "scriptc.shx"),
+    ("GothGBT", "gothice.shx"),
+    ("GothGRT", "gothicg.shx"),
+    ("GothITT", "gothici.shx"),
+    ("GreekC", "greekc.shx"),
+    ("ISO3098", "isoct.shx"),
 ];
+
+/// True when the stored font names this entry: by file, with or without the
+/// `.shx` extension, or by the shown name older versions stored.
+fn names_font(stored: &str, label: &str, value: &str) -> bool {
+    let stem = |name: &str| -> String {
+        let name = name.trim().to_ascii_lowercase();
+        name.strip_suffix(".shx").unwrap_or(&name).to_string()
+    };
+    stem(stored) == stem(value) || stored.trim().eq_ignore_ascii_case(label)
+}
 
 fn primary_style(theme: &Theme) -> iced::widget::text::Style {
     iced::widget::text::Style {
@@ -236,16 +262,16 @@ fn toggle<'a>(
 
 fn font_list<'a>(
     title: Cow<'static, str>,
-    values: Vec<String>,
+    values: Vec<(String, String)>,
     selected: &'a str,
     system: bool,
     read_only: bool,
 ) -> Element<'a, Message> {
     let items: Vec<Element<'a, Message>> = values
         .into_iter()
-        .map(|font| {
-            let active = selected.eq_ignore_ascii_case(&font);
-            let button = button(text(font.clone()).size(10))
+        .map(|(label, font)| {
+            let active = names_font(selected, &label, &font);
+            let button = button(text(label).size(10))
                 .style(list_item(active))
                 .padding([3, 8])
                 .width(Length::Fill);
@@ -318,13 +344,16 @@ pub fn view_window<'a>(
 
     let content: Element<'a, Message> = match v.tab {
         0 => {
-            let built_in = BUILTIN_FONTS
+            let built_in = STROKE_FONTS
                 .iter()
-                .map(|value| (*value).to_string())
+                .map(|(label, file)| ((*label).to_string(), (*file).to_string()))
                 .collect();
             // Web: the fetched Noto set plus the office/CAD family names it
             // stands in for (Arial → Noto Sans, …); desktop: installed fonts.
-            let system = crate::scene::text::sysfont::picker_families();
+            let system = crate::scene::text::sysfont::picker_families()
+                .into_iter()
+                .map(|family| (family.clone(), family))
+                .collect();
             column![
                 row![
                     font_list(t!("Stroke fonts"), built_in, v.font_buf, false, v.read_only),

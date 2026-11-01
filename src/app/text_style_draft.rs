@@ -5,6 +5,7 @@
 //! exact values and the text each number field showed when it was loaded; only
 //! a field whose text the user changed is parsed and written (#2413).
 
+use crate::entities::text_support::{TTF_FLAG_BOLD, TTF_FLAG_ITALIC};
 use codec::tables::TextStyle;
 
 /// A number field: the text shown when the style was loaded, and the text in
@@ -60,6 +61,27 @@ impl TextStyleDraft {
             oblique: NumberField::new(format!("{:.2}", style.oblique_angle.to_degrees())),
             height: NumberField::new(format!("{:.4}", style.height)),
         }
+    }
+
+    /// Switch to a stroke (SHX) font. A stroke font has no bold or italic face,
+    /// so those TrueType bits go; the character set and pitch bits stay.
+    pub(super) fn pick_stroke_font(&mut self, file: String) {
+        let style = &mut self.style;
+        style.font_file = file;
+        style.true_type_font.clear();
+        style.true_type_font_flags &= !(TTF_FLAG_BOLD | TTF_FLAG_ITALIC);
+    }
+
+    /// Switch to a TrueType family. The font file names the family's regular
+    /// face (bold and italic are flags), or stays empty when no installed file
+    /// is known. Vertical text and a big font apply to stroke fonts only.
+    pub(super) fn pick_system_font(&mut self, family: String) {
+        let style = &mut self.style;
+        style.font_file =
+            crate::scene::text::sysfont::face_file(&family, false, false).unwrap_or_default();
+        style.true_type_font = family;
+        style.is_vertical = false;
+        style.big_font_file.clear();
     }
 
     /// The style as edited: the changed number fields written in, every other
