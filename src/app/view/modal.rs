@@ -860,19 +860,10 @@ impl OpenCADStudio {
                     .iter()
                     .map(|s| s.name.clone())
                     .collect();
-                let selected_style = doc.text_styles.get(&self.textstyle_selected);
-                let (backward, upside_down, vertical, annotative, read_only) = selected_style
-                    .map(|style| {
-                        (
-                            style.flags.backward,
-                            style.flags.upside_down,
-                            style.is_vertical,
-                            style.annotative,
-                            style.xref_dependent,
-                        )
-                    })
-                    .unwrap_or((false, false, false, false, false));
-                let ttf_flags = selected_style.map_or(0, |style| style.true_type_font_flags);
+                let draft = &self.textstyle_draft;
+                let edited = draft.resolved();
+                let read_only = self.selected_textstyle_is_read_only();
+                let ttf_flags = draft.style.true_type_font_flags;
                 let in_use =
                     self.style_in_use(crate::app::StyleKind::Text, &self.textstyle_selected);
                 let compare_opts: Vec<String> = styles
@@ -887,7 +878,8 @@ impl OpenCADStudio {
                     .or_else(|| compare_opts.first().cloned())
                     .unwrap_or_default();
                 let mut comparison_sections = Vec::new();
-                if let (Some(a), Some(b)) = (selected_style, doc.text_styles.get(&compare_name)) {
+                if let Some(b) = doc.text_styles.get(&compare_name) {
+                    let a = &edited;
                     if (
                         &a.font_file,
                         &a.big_font_file,
@@ -924,19 +916,19 @@ impl OpenCADStudio {
                             comparison_sections: comparison_sections.clone(),
                             read_only,
                             in_use,
-                            font_buf: &self.textstyle_font,
-                            width_buf: &self.textstyle_width,
-                            oblique_buf: &self.textstyle_oblique,
-                            height_buf: &self.textstyle_height,
-                            bigfont_buf: &self.textstyle_bigfont,
-                            ttf_buf: &self.textstyle_ttf,
+                            font_buf: &draft.style.font_file,
+                            width_buf: &draft.width.text,
+                            oblique_buf: &draft.oblique.text,
+                            height_buf: &draft.height.text,
+                            bigfont_buf: &draft.style.big_font_file,
+                            ttf_buf: &draft.style.true_type_font,
                             bold: ttf_flags & crate::entities::text_support::TTF_FLAG_BOLD != 0,
                             italic: ttf_flags & crate::entities::text_support::TTF_FLAG_ITALIC
                                 != 0,
-                            backward,
-                            upside_down,
-                            vertical,
-                            annotative,
+                            backward: draft.style.flags.backward,
+                            upside_down: draft.style.flags.upside_down,
+                            vertical: draft.style.is_vertical,
+                            annotative: draft.style.annotative,
                             rename_active: self.style_rename.as_deref(),
                             rename_buf: &self.style_rename_buf,
                         },

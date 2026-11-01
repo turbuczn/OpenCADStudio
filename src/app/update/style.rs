@@ -627,17 +627,22 @@ impl OpenCADStudio {
         }
     }
 
-    /// Populate edit buffers from the currently selected text style.
+    /// An external-reference text style: flagged, or merged in as
+    /// `XREF|Name` (the merge does not set the flag).
+    pub(in crate::app) fn selected_textstyle_is_read_only(&self) -> bool {
+        self.tabs[self.active_tab]
+            .scene
+            .document
+            .text_styles
+            .get(&self.textstyle_selected)
+            .is_none_or(|style| style.xref_dependent || style.name.contains('|'))
+    }
 
-    pub(in crate::app) fn load_textstyle_bufs(&mut self, tab: usize) {
+    /// Load the selected text style into the editor's draft.
+    pub(in crate::app) fn load_textstyle_draft(&mut self, tab: usize) {
         let doc = &self.tabs[tab].scene.document;
         if let Some(s) = doc.text_styles.get(&self.textstyle_selected) {
-            self.textstyle_font = s.font_file.clone();
-            self.textstyle_width = format!("{:.4}", s.width_factor);
-            self.textstyle_oblique = format!("{:.2}", s.oblique_angle.to_degrees());
-            self.textstyle_height = format!("{:.4}", s.height);
-            self.textstyle_bigfont = s.big_font_file.clone();
-            self.textstyle_ttf = s.true_type_font.clone();
+            self.textstyle_draft = crate::app::text_style_draft::TextStyleDraft::load(s);
         }
     }
 
@@ -662,45 +667,38 @@ impl OpenCADStudio {
                 .map(|s| s.name.clone())
                 .unwrap_or_else(|| "Standard".to_string())
         };
-        self.load_textstyle_bufs(i);
+        self.load_textstyle_draft(i);
         self.active_modal = Some(crate::app::ModalKind::TextStyle);
         self.style_stage_begin();
         Task::none()
     }
 
-    /// Write the editor buffers into the selected text style (staged, no
-    /// commit), so edits survive switching to another style as well as Apply.
-    pub(super) fn stage_textstyle_bufs(&mut self) {
+    /// Write the draft into the selected text style (staged, no commit), so
+    /// edits survive switching to another style as well as Apply. Values the
+    /// user did not change stay exactly as stored.
+    pub(in crate::app) fn flush_textstyle_draft(&mut self) {
+        if self.selected_textstyle_is_read_only() {
+            return;
+        }
         let i = self.active_tab;
-        let name = self.textstyle_selected.clone();
-        let font = self.textstyle_font.clone();
-        let width_str = self.textstyle_width.clone();
-        let oblique_str = self.textstyle_oblique.clone();
-        let height_str = self.textstyle_height.clone();
-        let bigfont = self.textstyle_bigfont.clone();
-        let ttf = self.textstyle_ttf.clone();
-        if let Some(s) = self.tabs[i].scene.document.text_styles.get_mut(&name) {
-            if s.xref_dependent {
-                return;
-            }
-            s.font_file = font;
-            s.big_font_file = bigfont;
-            s.true_type_font = ttf;
-            if let Ok(w) = width_str.trim().parse::<f64>() {
-                s.width_factor = w;
-            }
-            if let Ok(a) = oblique_str.trim().parse::<f64>() {
-                s.oblique_angle = a.to_radians();
-            }
-            if let Ok(h) = height_str.trim().parse::<f64>() {
-                s.height = h.max(0.0);
+        let edited = self.textstyle_draft.resolved();
+        if let Some(s) = self.tabs[i]
+            .scene
+            .document
+            .text_styles
+            .get_mut(&self.textstyle_selected)
+        {
+            if *s != edited {
+                *s = edited;
             }
         }
     }
 
     pub(super) fn on_text_style_apply(&mut self) -> Task<Message> {
-        self.stage_textstyle_bufs();
+        self.flush_textstyle_draft();
         self.style_stage_commit();
+        // Re-base the draft on the stored values so a second Apply is a no-op.
+        self.load_textstyle_draft(self.active_tab);
         Task::none()
     }
 

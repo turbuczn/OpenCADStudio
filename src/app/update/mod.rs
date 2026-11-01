@@ -13002,10 +13002,10 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::TextStyleDialogSelect(name) => {
-                self.stage_textstyle_bufs();
+                self.flush_textstyle_draft();
                 let i = self.active_tab;
                 self.textstyle_selected = name;
-                self.load_textstyle_bufs(i);
+                self.load_textstyle_draft(i);
                 Task::none()
             }
             Message::TextStyleDialogTab(tab) => {
@@ -13020,13 +13020,7 @@ impl OpenCADStudio {
                 // Staged: persists on Apply.
                 let i = self.active_tab;
                 let name = self.textstyle_selected.clone();
-                if self.tabs[i]
-                    .scene
-                    .document
-                    .text_styles
-                    .get(&name)
-                    .is_some_and(|style| !style.xref_dependent)
-                {
+                if !self.selected_textstyle_is_read_only() {
                     self.tabs[i].scene.document.header.current_text_style_name = name.clone();
                     self.sync_ribbon_styles();
                     self.command_line
@@ -13072,63 +13066,46 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::TextStyleEdit { field, value } => {
+                let draft = &mut self.textstyle_draft;
                 match field {
-                    "font" => self.textstyle_font = value,
-                    "width" => self.textstyle_width = value,
-                    "oblique" => self.textstyle_oblique = value,
-                    "height" => self.textstyle_height = value,
-                    "bigfont" => self.textstyle_bigfont = value,
-                    "ttf" => self.textstyle_ttf = value,
+                    "font" => draft.style.font_file = value,
+                    "width" => draft.width.text = value,
+                    "oblique" => draft.oblique.text = value,
+                    "height" => draft.height.text = value,
+                    "bigfont" => draft.style.big_font_file = value,
+                    "ttf" => draft.style.true_type_font = value,
                     _ => {}
                 }
                 Task::none()
             }
             Message::TextStyleToggle(field) => {
-                // Staged: mutate live for preview, persist on Apply.
-                let i = self.active_tab;
-                let name = self.textstyle_selected.clone();
-                if let Some(s) = self.tabs[i].scene.document.text_styles.get_mut(&name) {
-                    if s.xref_dependent {
-                        return Task::none();
+                if self.selected_textstyle_is_read_only() {
+                    return Task::none();
+                }
+                let s = &mut self.textstyle_draft.style;
+                match field {
+                    "backward" => s.flags.backward = !s.flags.backward,
+                    "upside_down" => s.flags.upside_down = !s.flags.upside_down,
+                    "vertical" => s.is_vertical = !s.is_vertical,
+                    "annotative" => s.annotative = !s.annotative,
+                    "bold" => s.true_type_font_flags ^= crate::entities::text_support::TTF_FLAG_BOLD,
+                    "italic" => {
+                        s.true_type_font_flags ^= crate::entities::text_support::TTF_FLAG_ITALIC
                     }
-                    match field {
-                        "backward" => s.flags.backward = !s.flags.backward,
-                        "upside_down" => s.flags.upside_down = !s.flags.upside_down,
-                        "vertical" => s.is_vertical = !s.is_vertical,
-                        "annotative" => s.annotative = !s.annotative,
-                        "bold" => {
-                            s.true_type_font_flags ^= crate::entities::text_support::TTF_FLAG_BOLD
-                        }
-                        "italic" => {
-                            s.true_type_font_flags ^=
-                                crate::entities::text_support::TTF_FLAG_ITALIC
-                        }
-                        _ => {}
-                    }
+                    _ => {}
                 }
                 Task::none()
             }
             Message::TextStyleApply => self.on_text_style_apply(),
             Message::TextStyleFontPick(font_file) => {
-                // Staged: update the buffer + live style; persist on Apply.
-                let i = self.active_tab;
-                let name = self.textstyle_selected.clone();
-                if self.tabs[i]
-                    .scene
-                    .document
-                    .text_styles
-                    .get(&name)
-                    .is_some_and(|style| style.xref_dependent)
-                {
+                if self.selected_textstyle_is_read_only() {
                     return Task::none();
                 }
-                self.textstyle_font = font_file.clone();
+                let s = &mut self.textstyle_draft.style;
+                s.font_file = font_file;
                 // A stroke font replaces the system font, which would
                 // otherwise keep taking precedence.
-                self.textstyle_ttf.clear();
-                if let Some(s) = self.tabs[i].scene.document.text_styles.get_mut(&name) {
-                    s.font_file = font_file;
-                }
+                s.true_type_font.clear();
                 Task::none()
             }
 

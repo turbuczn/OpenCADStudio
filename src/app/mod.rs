@@ -78,6 +78,9 @@ mod shortcuts;
 mod startup;
 pub(crate) mod style_ops;
 mod text_inline;
+mod text_style_draft;
+#[cfg(test)]
+mod text_style_manager_tests;
 mod tolerance_dialog;
 mod update;
 pub(crate) use update::style_import::{style_exists as style_import_exists, StyleImportDraft};
@@ -1693,18 +1696,9 @@ pub(super) struct OpenCADStudio {
     textstyle_selected: String,
     textstyle_tab: u8,
     textstyle_compare: String,
-    /// Edit buffer for font file name.
-    textstyle_font: String,
-    /// Edit buffer for width factor.
-    textstyle_width: String,
-    /// Edit buffer for oblique angle (degrees).
-    textstyle_oblique: String,
-    /// Edit buffer for fixed text height (0 = variable).
-    textstyle_height: String,
-    /// Edit buffer for big-font file name.
-    textstyle_bigfont: String,
-    /// Edit buffer for TrueType font name.
-    textstyle_ttf: String,
+    /// Working copy of the selected style; written into the document before
+    /// any list operation and on Apply.
+    textstyle_draft: text_style_draft::TextStyleDraft,
 
     // ── Color Scheme ──────────────────────────────────────────────────────
     active_theme: Theme,
@@ -6055,12 +6049,7 @@ impl OpenCADStudio {
             textstyle_selected: "Standard".to_string(),
             textstyle_tab: 0,
             textstyle_compare: String::new(),
-            textstyle_font: String::new(),
-            textstyle_width: "1.0".to_string(),
-            textstyle_oblique: "0.0".to_string(),
-            textstyle_height: "0.0".to_string(),
-            textstyle_bigfont: String::new(),
-            textstyle_ttf: String::new(),
+            textstyle_draft: Default::default(),
             // TableStyle dialog
             tablestyle_selected: "Standard".to_string(),
             tablestyle_tab: 0,

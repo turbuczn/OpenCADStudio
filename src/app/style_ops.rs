@@ -21,6 +21,8 @@ use super::OpenCADStudio;
 use codec::objects::{Dictionary, MLineStyle, MultiLeaderStyle, ObjectType, TableStyle};
 use codec::tables::{DimStyle, TextStyle};
 use codec::types::Handle;
+use rustc_hash::FxHashMap;
+use std::sync::Arc;
 
 const MLEADERSTYLE_DICT_NAME: &str = "ACAD_MLEADERSTYLE";
 
@@ -288,7 +290,7 @@ impl OpenCADStudio {
     fn load_style_bufs(&mut self, kind: StyleKind) {
         let i = self.active_tab;
         match kind {
-            StyleKind::Text => self.load_textstyle_bufs(i),
+            StyleKind::Text => self.load_textstyle_draft(i),
             StyleKind::Dim => self.load_dimstyle_bufs(i),
             StyleKind::MLeader => self.load_mleaderstyle_bufs(i),
             StyleKind::Table => self.load_tablestyle_bufs(i),
@@ -552,29 +554,32 @@ impl OpenCADStudio {
                 if doc.header.current_text_style_name.eq_ignore_ascii_case(old) {
                     doc.header.current_text_style_name = new.to_string();
                 }
-                for e in doc.entities_mut() {
-                    match e {
-                        codec::entities::EntityType::Text(t)
-                            if t.style.eq_ignore_ascii_case(old) =>
-                        {
-                            t.style = new.to_string();
+                // Only the texts naming the style change, each through
+                // `get_entity_mut`: a bulk `entities_mut` pass would drop the
+                // stored record of every entity in the drawing.
+                let handles: Vec<Handle> = doc
+                    .entities()
+                    .filter(|entity| names_text_style(entity, old))
+                    .map(|entity| entity.common().handle)
+                    .collect();
+                for handle in handles {
+                    // The open manager restores these on Close and puts them
+                    // in the Apply undo step.
+                    if let (Some(stage), Some(before)) =
+                        (self.style_stage.as_mut(), doc.get_entity_arc(handle))
+                    {
+                        stage.entities.entry(handle).or_insert(before);
+                    }
+                    match doc.get_entity_mut(handle) {
+                        Some(codec::entities::EntityType::Text(t)) => t.style = new.to_string(),
+                        Some(codec::entities::EntityType::MText(t)) => t.style = new.to_string(),
+                        Some(codec::entities::EntityType::AttributeEntity(a)) => {
+                            a.text_style = new.to_string()
                         }
-                        codec::entities::EntityType::MText(t)
-                            if t.style.eq_ignore_ascii_case(old) =>
-                        {
-                            t.style = new.to_string();
+                        Some(codec::entities::EntityType::AttributeDefinition(a)) => {
+                            a.text_style = new.to_string()
                         }
-                        codec::entities::EntityType::AttributeEntity(a)
-                            if a.text_style.eq_ignore_ascii_case(old) =>
-                        {
-                            a.text_style = new.to_string();
-                        }
-                        codec::entities::EntityType::AttributeDefinition(a)
-                            if a.text_style.eq_ignore_ascii_case(old) =>
-                        {
-                            a.text_style = new.to_string();
-                        }
-                        codec::entities::EntityType::Insert(insert) => {
+                        Some(codec::entities::EntityType::Insert(insert)) => {
                             for attribute in &mut insert.attributes {
                                 if attribute.text_style.eq_ignore_ascii_case(old) {
                                     attribute.text_style = new.to_string();
@@ -710,7 +715,27 @@ impl OpenCADStudio {
     // closing the window without Apply calls `style_stage_discard`, which
     // restores the snapshot taken when the manager opened.
 
+    /// Write the open property editor into its style before a list operation,
+    /// so a value typed but not yet applied is neither lost nor copied stale.
+    fn flush_style_editor(&mut self, kind: StyleKind) {
+        if kind == StyleKind::Text {
+            self.flush_textstyle_draft();
+        }
+    }
+
+    /// An external-reference style: flagged, or merged in as `XREF|Name`.
+    fn style_is_read_only(&self, kind: StyleKind, name: &str) -> bool {
+        let doc = &self.tabs[self.active_tab].scene.document;
+        match kind {
+            StyleKind::Text => {
+                name.contains('|') || doc.text_styles.get(name).is_some_and(|s| s.xref_dependent)
+            }
+            _ => false,
+        }
+    }
+
     pub(super) fn style_new(&mut self, kind: StyleKind) -> iced::Task<crate::app::Message> {
+        self.flush_style_editor(kind);
         let i = self.active_tab;
         let name = self.unique_new_name(kind);
         let h = self.tabs[i].scene.document.allocate_handle();
@@ -730,6 +755,7 @@ impl OpenCADStudio {
     }
 
     pub(super) fn style_copy(&mut self, kind: StyleKind) -> iced::Task<crate::app::Message> {
+        self.flush_style_editor(kind);
         let i = self.active_tab;
         let src = self.style_selected(kind);
         let name = self.unique_suffixed_name(kind, &src);
@@ -760,10 +786,16 @@ impl OpenCADStudio {
     }
 
     pub(super) fn style_delete(&mut self, kind: StyleKind) {
+        self.flush_style_editor(kind);
         let name = self.style_selected(kind);
         if name.eq_ignore_ascii_case("Standard") {
             self.command_line
                 .push_error(crate::t!("Cannot delete the Standard style.").as_ref());
+            return;
+        }
+        if self.style_is_read_only(kind, &name) {
+            self.command_line
+                .push_error(crate::t!("Referenced style · Read only").as_ref());
             return;
         }
         if self.style_in_use(kind, &name) {
@@ -788,6 +820,7 @@ impl OpenCADStudio {
 
     /// Begin inline rename of the double-clicked style.
     pub(super) fn style_rename_start(&mut self, kind: StyleKind, name: String) {
+        self.flush_style_editor(kind);
         self.set_style_selected(kind, name.clone());
         self.load_style_bufs(kind);
         self.style_rename_buf = name.clone();
@@ -810,6 +843,11 @@ impl OpenCADStudio {
         if old.eq_ignore_ascii_case("Standard") {
             self.command_line
                 .push_error(crate::t!("Cannot rename the Standard style.").as_ref());
+            return;
+        }
+        if self.style_is_read_only(kind, &old) || new.contains('|') {
+            self.command_line
+                .push_error(crate::t!("Referenced style · Read only").as_ref());
             return;
         }
         if self.style_exists(kind, &new) {
@@ -910,6 +948,7 @@ impl OpenCADStudio {
         self.style_stage = Some(StyleStage {
             dirty_at_open,
             baseline,
+            entities: FxHashMap::default(),
         });
     }
 
@@ -925,7 +964,17 @@ impl OpenCADStudio {
         sync_mleaderstyle_dictionary(&mut self.tabs[i].scene.document);
 
         let edited = self.capture_style_state();
-        let changed = edited != stage.baseline;
+        let doc = &self.tabs[i].scene.document;
+        let entities: Vec<_> = stage
+            .entities
+            .into_iter()
+            .filter_map(|(handle, before)| {
+                let after = doc.get_entity_arc(handle);
+                let same = after.as_ref().is_some_and(|after| Arc::ptr_eq(after, &before));
+                (!same).then_some((handle, Some(before), after))
+            })
+            .collect();
+        let changed = edited != stage.baseline || !entities.is_empty();
         if changed {
             self.tabs[i].dirty = true;
             let (text_names, dim_names, object_handles) = edited.changed_keys(&stage.baseline);
@@ -982,15 +1031,29 @@ impl OpenCADStudio {
             self.tabs[i]
                 .scene
                 .invalidate_object_style_dependencies(&object_handles);
-            self.commit_style_undo(i, stage.baseline, edited.clone(), stage.dirty_at_open);
+            let renamed: Vec<_> = entities
+                .iter()
+                .map(|(handle, _, _)| (*handle, crate::scene::ChangeKind::Modified))
+                .collect();
+            self.tabs[i].scene.bump_entities(&renamed);
+            self.commit_style_undo(
+                i,
+                stage.baseline,
+                edited,
+                entities,
+                stage.dirty_at_open,
+            );
         } else {
             self.tabs[i].dirty = stage.dirty_at_open;
         }
         self.sync_ribbon_styles();
         // Re-baseline so further edits in the still-open window stage afresh.
+        // Captured after the ribbon sync, which can move the ribbon's active
+        // styles: a second untouched Apply must find nothing changed.
         self.style_stage = Some(StyleStage {
             dirty_at_open: self.tabs[i].dirty,
-            baseline: edited,
+            baseline: self.capture_style_state(),
+            entities: FxHashMap::default(),
         });
     }
 
@@ -1000,8 +1063,21 @@ impl OpenCADStudio {
         let Some(stage) = self.style_stage.take() else {
             return;
         };
-        self.restore_style_state(self.active_tab, &stage.baseline);
-        self.tabs[self.active_tab].dirty = stage.dirty_at_open;
+        let i = self.active_tab;
+        self.restore_style_state(i, &stage.baseline);
+        let doc = &mut self.tabs[i].scene.document;
+        let restored: Vec<_> = stage
+            .entities
+            .into_iter()
+            .filter_map(|(handle, before)| {
+                doc.replace_entity_arc(handle, before)
+                    .map(|_| (handle, crate::scene::ChangeKind::Modified))
+            })
+            .collect();
+        if !restored.is_empty() {
+            self.tabs[i].scene.bump_entities(&restored);
+        }
+        self.tabs[i].dirty = stage.dirty_at_open;
         self.sync_ribbon_styles();
     }
 }
@@ -1084,6 +1160,27 @@ impl StyleStateSnapshot {
 pub(super) struct StyleStage {
     dirty_at_open: bool,
     baseline: StyleStateSnapshot,
+    /// Entities the transaction changed (a rename rewrites their style name),
+    /// as they were when the manager opened.
+    entities: FxHashMap<Handle, Arc<codec::EntityType>>,
+}
+
+/// True when the entity, or one of an insert's attributes, names the text style.
+fn names_text_style(entity: &codec::EntityType, name: &str) -> bool {
+    use codec::EntityType;
+    match entity {
+        EntityType::Text(text) => text.style.eq_ignore_ascii_case(name),
+        EntityType::MText(text) => text.style.eq_ignore_ascii_case(name),
+        EntityType::AttributeEntity(attribute) => attribute.text_style.eq_ignore_ascii_case(name),
+        EntityType::AttributeDefinition(attribute) => {
+            attribute.text_style.eq_ignore_ascii_case(name)
+        }
+        EntityType::Insert(insert) => insert
+            .attributes
+            .iter()
+            .any(|attribute| attribute.text_style.eq_ignore_ascii_case(name)),
+        _ => false,
+    }
 }
 
 // ── Object-store helpers ───────────────────────────────────────────────────
