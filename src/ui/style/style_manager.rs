@@ -54,7 +54,8 @@ pub struct Scaffold<'a, 'b> {
     /// sets it. `None` for managers without one.
     pub in_use_filter: Option<(bool, fn(bool) -> Message)>,
     /// Why Apply is off while the editor holds values it cannot apply, shown
-    /// beside the button. `None` keeps Apply on.
+    /// beside the button; New, Copy, Delete and Import are off with it.
+    /// `None` keeps them on.
     pub apply_blocked: Option<Cow<'static, str>>,
     /// What each list row shows beside the name, in `styles` order. `None`
     /// for managers that do not count their users.
@@ -84,14 +85,35 @@ pub fn view<'a, 'b>(s: Scaffold<'a, 'b>) -> Element<'a, Message> {
     let width = s.sizing.width;
     let height = s.sizing.height;
     let compact = s.compact;
+    // A value the editor cannot apply would be lost by leaving the style, so
+    // the list operations wait with Apply.
+    let editable = s.apply_blocked.is_none();
+    // Standard, the current style and a style texts use cannot be deleted.
+    let in_use = s
+        .styles
+        .iter()
+        .position(|name| name == s.selected)
+        .and_then(|index| s.rows?.get(index))
+        .is_some_and(|row| row.count > 0);
+    let can_delete = editable
+        && !s.read_only
+        && !in_use
+        && !s.selected.eq_ignore_ascii_case("Standard")
+        && s.current != Some(s.selected);
     // ── Toolbar: New / Copy / Delete | … | Set Current / Apply ────────────
     let mut bar = row![
-        tool_button(NEW, t!("New"), Some(s.on_new), false, compact),
-        tool_button(COPY, t!("Copy"), Some(s.on_copy), false, compact),
+        tool_button(NEW, t!("New"), editable.then_some(s.on_new), false, compact),
+        tool_button(
+            COPY,
+            t!("Copy"),
+            editable.then_some(s.on_copy),
+            false,
+            compact
+        ),
         tool_button(
             DELETE,
             t!("Delete"),
-            (!s.read_only).then_some(s.on_delete),
+            can_delete.then_some(s.on_delete),
             false,
             compact
         ),
@@ -100,13 +122,12 @@ pub fn view<'a, 'b>(s: Scaffold<'a, 'b>) -> Element<'a, Message> {
         bar = bar.push(tool_button(
             IMPORT,
             t!("Import"),
-            Some(message),
+            editable.then_some(message),
             false,
             compact,
         ));
     }
     let mut bar = bar.push(Space::new().width(width));
-    let can_apply = s.apply_blocked.is_none();
     if let Some(reason) = s.apply_blocked {
         bar = bar.push(
             text(reason)
@@ -125,7 +146,7 @@ pub fn view<'a, 'b>(s: Scaffold<'a, 'b>) -> Element<'a, Message> {
         .push(tool_button(
             APPLY,
             t!("Apply"),
-            (!s.read_only && can_apply).then_some(s.on_apply),
+            (!s.read_only && editable).then_some(s.on_apply),
             true,
             compact,
         ))

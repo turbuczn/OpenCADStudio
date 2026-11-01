@@ -140,3 +140,21 @@ fn a_right_click_on_a_custom_field_offers_reset_to_style() {
         "{messages:?}"
     );
 }
+
+#[test]
+fn a_font_picked_for_the_text_leaves_the_style_alone() {
+    use crate::ui::font_picker::{FontChoice, FontPickerEvent};
+    let mut app = editing("Text", 2.5);
+    let before = app.tabs[1].scene.document.text_styles.get("Notes").cloned();
+    for font in [
+        FontChoice::Stroke("simplex.shx".to_string()),
+        FontChoice::TrueType("Arial".to_string()),
+    ] {
+        let _ = app.update(Message::MTextFontPicker(FontPickerEvent::Pick(font)));
+    }
+    assert!(raw(&app).contains(r"\f"), "{}", raw(&app));
+    assert!(app.mtext_commit());
+
+    let doc = &app.tabs[1].scene.document;
+    assert_eq!(doc.text_styles.get("Notes").cloned(), before);
+}

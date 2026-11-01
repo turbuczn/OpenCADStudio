@@ -89,10 +89,16 @@ pub(crate) fn sync_mleaderstyle_dictionary(doc: &mut codec::Document) {
     };
 
     if let Some(ObjectType::Dictionary(root)) = doc.objects.get_mut(&root_h) {
-        root.entries
-            .retain(|(name, _)| !name.eq_ignore_ascii_case(MLEADERSTYLE_DICT_NAME));
-
-        root.add_entry(MLEADERSTYLE_DICT_NAME, dict_h);
+        // An existing entry keeps its place: the order is saved with the
+        // drawing, and an untouched Apply must not change it.
+        match root
+            .entries
+            .iter_mut()
+            .find(|(name, _)| name.eq_ignore_ascii_case(MLEADERSTYLE_DICT_NAME))
+        {
+            Some(entry) => entry.1 = dict_h,
+            None => root.add_entry(MLEADERSTYLE_DICT_NAME, dict_h),
+        }
     }
 
     let mut entries: Vec<(String, Handle)> = doc
@@ -348,6 +354,9 @@ impl OpenCADStudio {
                 if let Some(mut s) = doc.text_styles.get(src).cloned() {
                     s.name = name.to_string();
                     s.handle = handle;
+                    // A copy of a referenced style is the drawing's own.
+                    s.xref_dependent = false;
+                    s.xref_block_record_handle = Handle::NULL;
                     let _ = doc.text_styles.add(s);
                     return true;
                 }
@@ -723,6 +732,13 @@ impl OpenCADStudio {
         }
     }
 
+    /// The text style editor holds a value it cannot apply: leaving the style
+    /// would drop it, so New, Copy, Delete, Rename and switching wait until it
+    /// is fixed (the window says why beside Apply).
+    pub(super) fn style_editor_blocked(&self, kind: StyleKind) -> bool {
+        kind == StyleKind::Text && self.textstyle_draft.invalid_fields() > 0
+    }
+
     /// An external-reference style: flagged, or merged in as `XREF|Name`.
     fn style_is_read_only(&self, kind: StyleKind, name: &str) -> bool {
         let doc = &self.tabs[self.active_tab].scene.document;
@@ -735,6 +751,9 @@ impl OpenCADStudio {
     }
 
     pub(super) fn style_new(&mut self, kind: StyleKind) -> iced::Task<crate::app::Message> {
+        if self.style_editor_blocked(kind) {
+            return iced::Task::none();
+        }
         self.flush_style_editor(kind);
         let i = self.active_tab;
         let name = self.unique_new_name(kind);
@@ -756,10 +775,15 @@ impl OpenCADStudio {
     }
 
     pub(super) fn style_copy(&mut self, kind: StyleKind) -> iced::Task<crate::app::Message> {
+        if self.style_editor_blocked(kind) {
+            return iced::Task::none();
+        }
         self.flush_style_editor(kind);
         let i = self.active_tab;
         let src = self.style_selected(kind);
-        let name = self.unique_suffixed_name(kind, &src);
+        // `XREF|Notes` is copied as `Notes (1)`: a name with `|` stays read only.
+        let base = src.rsplit('|').next().unwrap_or(&src);
+        let name = self.unique_suffixed_name(kind, base);
         let h = self.tabs[i].scene.document.allocate_handle();
         if !self.clone_style_as(kind, &src, &name, h) {
             return iced::Task::none();
@@ -787,6 +811,9 @@ impl OpenCADStudio {
     }
 
     pub(super) fn style_delete(&mut self, kind: StyleKind) {
+        if self.style_editor_blocked(kind) {
+            return;
+        }
         self.flush_style_editor(kind);
         let name = self.style_selected(kind);
         if name.eq_ignore_ascii_case("Standard") {
@@ -821,6 +848,9 @@ impl OpenCADStudio {
 
     /// Begin inline rename of the double-clicked style.
     pub(super) fn style_rename_start(&mut self, kind: StyleKind, name: String) {
+        if self.style_editor_blocked(kind) {
+            return;
+        }
         self.flush_style_editor(kind);
         self.set_style_selected(kind, name.clone());
         self.load_style_bufs(kind);

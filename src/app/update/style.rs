@@ -708,6 +708,85 @@ impl OpenCADStudio {
         }
     }
 
+    /// The text style manager's list: each style's text count and lock.
+    /// "Styles in use" keeps the used ones, the current and the selected. A
+    /// shape file entry (linetype symbols) has no name and is not listed.
+    pub(in crate::app) fn textstyle_list(
+        &self,
+    ) -> (Vec<String>, Vec<crate::ui::style::style_manager::StyleRow>) {
+        let doc = &self.tabs[self.active_tab].scene.document;
+        let current = &doc.header.current_text_style_name;
+        doc.text_styles
+            .iter()
+            .filter(|s| !s.is_shape_file)
+            .map(|s| {
+                let count = self
+                    .textstyle_counts
+                    .get(&s.name.to_ascii_lowercase())
+                    .copied()
+                    .unwrap_or(0);
+                let row = crate::ui::style::style_manager::StyleRow {
+                    count,
+                    locked: s.xref_dependent || s.name.contains('|'),
+                };
+                (s.name.clone(), row)
+            })
+            .filter(|(name, row)| {
+                !self.textstyle_in_use_only
+                    || row.count > 0
+                    || name.eq_ignore_ascii_case(current)
+                    || name.eq_ignore_ascii_case(&self.textstyle_selected)
+            })
+            .unzip()
+    }
+
+    /// What the text style manager's preview draws: `edited` resolved as the
+    /// drawing resolves a style (the SHX file on disk, its big font, the
+    /// TrueType face of the bold and italic flags).
+    pub(in crate::app) fn textstyle_preview(
+        &self,
+        edited: &codec::tables::TextStyle,
+    ) -> crate::ui::style::textstyle::Preview {
+        let doc = &self.tabs[self.active_tab].scene.document;
+        let resolved = crate::entities::text_support::resolve_text_style_record(edited, doc);
+        let ttf = !edited.true_type_font.trim().is_empty();
+        let mut font_label = if ttf {
+            edited.true_type_font.clone()
+        } else {
+            edited.font_file.clone()
+        };
+        if self.textstyle_draft.big_font_on && !edited.big_font_file.trim().is_empty() {
+            font_label = format!("{font_label} + {}", edited.big_font_file);
+        }
+        if edited.height > 0.0 {
+            let mode = if edited.annotative {
+                crate::t!("Paper height")
+            } else {
+                crate::t!("Drawing height")
+            };
+            let height = crate::entities::common::format_length(edited.height);
+            font_label = format!("{font_label} · {mode} {height}");
+        }
+        crate::ui::style::textstyle::Preview {
+            font: resolved.font_name,
+            width_factor: if resolved.is_backward {
+                -resolved.width_factor
+            } else {
+                resolved.width_factor
+            },
+            oblique: resolved.oblique_angle,
+            upside_down: resolved.is_upside_down,
+            vertical: resolved.is_vertical && !ttf,
+            text: if self.textstyle_sample.trim().is_empty() {
+                crate::ui::style::textstyle::default_sample(self.textstyle_draft.big_font_on)
+                    .to_string()
+            } else {
+                self.textstyle_sample.clone()
+            },
+            caption: font_label,
+        }
+    }
+
     pub(super) fn on_text_style_apply(&mut self) -> Task<Message> {
         // A field that cannot be applied keeps Apply off (the window says
         // which); nothing is written until it is fixed.

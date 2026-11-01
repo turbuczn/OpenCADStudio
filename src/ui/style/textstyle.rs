@@ -146,8 +146,10 @@ fn outline(preview: &Preview) -> Rc<Outline> {
 
 struct PreviewCanvas {
     outline: Rc<Outline>,
-    caption: String,
 }
+
+/// The empty space the preview keeps around the text on each side.
+const PREVIEW_MARGIN: f32 = 16.0;
 
 impl canvas::Program<Message> for PreviewCanvas {
     type State = ();
@@ -171,12 +173,15 @@ impl canvas::Program<Message> for PreviewCanvas {
         }
         if min[0] <= max[0] {
             let span = [(max[0] - min[0]).max(1.0), (max[1] - min[1]).max(1.0)];
-            let available = [bounds.width - 24.0, bounds.height - 34.0];
+            let available = [
+                bounds.width - 2.0 * PREVIEW_MARGIN,
+                bounds.height - 2.0 * PREVIEW_MARGIN,
+            ];
             let scale = (available[0] / span[0])
                 .min(available[1] / span[1])
                 .clamp(0.0, 6.0);
             let middle = [(min[0] + max[0]) * 0.5, (min[1] + max[1]) * 0.5];
-            let center = [bounds.width * 0.5, (bounds.height - 18.0) * 0.5];
+            let center = [bounds.width * 0.5, bounds.height * 0.5];
             let map = |[x, y]: [f32; 2]| {
                 Point::new(
                     center[0] + (x - middle[0]) * scale,
@@ -207,14 +212,6 @@ impl canvas::Program<Message> for PreviewCanvas {
                 frame.fill(&path, ink);
             }
         }
-        frame.fill_text(canvas::Text {
-            content: self.caption.clone(),
-            position: Point::new(10.0, bounds.height - 9.0),
-            color: ink.scale_alpha(0.65),
-            size: iced::Pixels(10.0),
-            align_y: iced::alignment::Vertical::Center,
-            ..Default::default()
-        });
         vec![frame.into_geometry()]
     }
 }
@@ -533,14 +530,19 @@ fn apply_summary<'a>(v: &TextStyleView<'a>) -> Option<Element<'a, Message>> {
 
 /// The preview with its sample text field, and where the style is used.
 fn preview_and_usage<'a>(v: &TextStyleView<'a>) -> Element<'a, Message> {
-    let preview = container(
+    // The caption wraps under the drawing: a long font name stays inside.
+    let preview = container(column![
         canvas(PreviewCanvas {
             outline: outline(&v.preview),
-            caption: v.preview.caption.clone(),
         })
         .width(Length::Fill)
-        .height(130),
-    )
+        .height(110),
+        text(v.preview.caption.clone())
+            .size(10)
+            .style(muted_style)
+            .width(Length::Fill),
+    ])
+    .padding(iced::Padding::ZERO.bottom(6).left(10).right(10))
     .width(Length::Fill)
     .style(container::bordered_box);
     let sample = text_input(default_sample(v.use_big_font), v.sample)

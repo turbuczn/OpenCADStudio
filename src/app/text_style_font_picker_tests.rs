@@ -180,3 +180,26 @@ fn the_mtext_picker_writes_the_shx_file_the_style_would_store() {
     let ed = app.mtext_editor.as_ref().unwrap();
     assert!(!ed.content.text().contains("\\F"), "{}", ed.content.text());
 }
+
+#[test]
+fn a_bare_stroke_name_in_the_drawing_is_listed_as_its_shx_file() {
+    let app = app_with_styles(vec![style("Old", "txt", ""), style("Roman", "RomanS", "")]);
+    let doc = &app.tabs[app.active_tab].scene.document;
+    let drawing: Vec<_> = catalogue(doc, false)
+        .into_iter()
+        .take_while(|entry| entry.section == Section::Drawing)
+        .map(|entry| entry.choice)
+        .collect();
+    assert!(
+        drawing.contains(&FontChoice::Stroke("txt.shx".to_string())),
+        "{drawing:?}"
+    );
+    assert!(
+        drawing.contains(&FontChoice::Stroke("romans.shx".to_string())),
+        "{drawing:?}"
+    );
+    assert!(
+        !drawing.contains(&FontChoice::Stroke("txt".to_string())),
+        "{drawing:?}"
+    );
+}

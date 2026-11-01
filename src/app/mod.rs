@@ -4834,8 +4834,6 @@ pub enum Message {
     MTextHeight(String),
     /// Toolbar text-style dropdown changed.
     MTextStyle(String),
-    /// Toolbar font dropdown changed.
-    MTextFont(String),
     /// The toolbar font picker: open, search or pick.
     MTextFontPicker(crate::ui::font_picker::FontPickerEvent),
     /// "Reset to style" on a first-row field (font, height, width, oblique).

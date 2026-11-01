@@ -86,39 +86,41 @@ fn a_stroke_font_stores_its_shx_file_and_drops_bold_and_italic() {
 
 #[test]
 fn a_system_font_stores_its_file_with_the_family_and_drops_stroke_settings() {
-    // A family with an installed file; the machine running the test decides.
-    let Some((family, file)) = crate::scene::text::sysfont::families()
+    use crate::scene::text::sysfont;
+    // The bundled web font, on every machine; and a family with an
+    // installed file, where the machine has one.
+    let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/web/fonts/latin.ttf"))
+        .expect("bundled web font");
+    let (bundled, _) = sysfont::register_font_file("TextStyle-Test.ttf", &bytes).expect("a face");
+    let installed = sysfont::families()
         .into_iter()
-        .find_map(|family| {
-            let file = crate::scene::text::sysfont::face_file(&family, false, false)?;
-            Some((family, file))
-        })
-    else {
-        return;
-    };
-    let mut style = TextStyle::new("Notes");
-    style.font_file = "txt.shx".to_string();
-    style.big_font_file = "gbcbig.shx".to_string();
-    style.is_vertical = true;
-    let mut app = app_editing(style);
-    let _ = app.update(pick(FontChoice::TrueType(family.clone())));
-    let _ = app.update(Message::TextStyleApply);
+        .find(|family| sysfont::face_file(family, false, false).is_some());
+    for family in std::iter::once(bundled).chain(installed) {
+        let file = sysfont::face_file(&family, false, false).unwrap_or_default();
+        let mut style = TextStyle::new("Notes");
+        style.font_file = "txt.shx".to_string();
+        style.big_font_file = "gbcbig.shx".to_string();
+        style.is_vertical = true;
+        let mut app = app_editing(style);
+        let _ = app.update(pick(FontChoice::TrueType(family.clone())));
+        let _ = app.update(Message::TextStyleApply);
 
-    let doc = &app.tabs[app.active_tab].scene.document;
-    let style = notes(doc);
-    assert_eq!(
-        (style.font_file.as_str(), style.true_type_font.as_str()),
-        (file.as_str(), family.as_str())
-    );
-    assert!(style.big_font_file.is_empty());
-    assert!(!style.is_vertical);
-    for ext in ["dxf", "dwg"] {
-        let back = notes(&round_trip(doc, ext));
+        let doc = &app.tabs[app.active_tab].scene.document;
+        let style = notes(doc);
         assert_eq!(
-            (back.font_file, back.true_type_font),
-            (file.clone(), family.clone()),
-            "{ext}"
+            (style.font_file.as_str(), style.true_type_font.as_str()),
+            (file.as_str(), family.as_str())
         );
+        assert!(style.big_font_file.is_empty());
+        assert!(!style.is_vertical);
+        for ext in ["dxf", "dwg"] {
+            let back = notes(&round_trip(doc, ext));
+            assert_eq!(
+                (back.font_file, back.true_type_font),
+                (file.clone(), family.clone()),
+                "{family} {ext}"
+            );
+        }
     }
 }
 

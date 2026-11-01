@@ -159,6 +159,32 @@ fn a_first_fixed_height_leaves_the_existing_texts_alone() {
     assert_eq!(text(&app, mtext).0, 0.0);
     let doc = &app.tabs[app.active_tab].scene.document;
     assert_eq!(doc.text_styles.get("Notes").unwrap().height, 2.5);
+
+    // A text placed now takes the style's height without asking for one.
+    app.close_active_modal();
+    let doc = &mut app.tabs[app.active_tab].scene.document;
+    doc.header.current_text_style_name = "Notes".to_string();
+    let result = app.automation_op(r#"{"op":"run","cmd":"TEXT 0,0 0 New"}"#);
+    assert_eq!(result["added"].as_i64(), Some(1), "{result}");
+    let doc = &app.tabs[app.active_tab].scene.document;
+    let new = doc.entities().find_map(|entity| match entity {
+        EntityType::Text(t) if t.value == "New" => Some(t.height),
+        _ => None,
+    });
+    assert_eq!(new, Some(2.5));
+}
+
+#[test]
+fn an_mtext_with_its_own_whole_text_height_keeps_it() {
+    let mut app = app_with_notes();
+    let own = add_mtext(&mut app, r"\H5;B", 2.5);
+    let follows = add_mtext(&mut app, "B", 2.5);
+
+    edit(&mut app, "height", "3.5");
+    let _ = app.update(Message::TextStyleApply);
+
+    assert_eq!(text(&app, own).0, 2.5);
+    assert_eq!(text(&app, follows).0, 3.5);
 }
 
 #[test]

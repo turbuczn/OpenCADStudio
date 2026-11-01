@@ -853,13 +853,7 @@ impl OpenCADStudio {
             super::super::ModalKind::TextStyle => {
                 let tab = &self.tabs[self.active_tab];
                 let doc = &tab.scene.document;
-                let styles: Vec<String> = tab
-                    .scene
-                    .document
-                    .text_styles
-                    .iter()
-                    .map(|s| s.name.clone())
-                    .collect();
+                let styles: Vec<String> = self.style_names(super::super::StyleKind::Text);
                 let draft = &self.textstyle_draft;
                 let edited = draft.resolved();
                 let apply_summary = self
@@ -876,70 +870,8 @@ impl OpenCADStudio {
                     .unwrap_or_default();
                 let read_only = self.selected_textstyle_is_read_only();
                 let ttf_flags = draft.style.true_type_font_flags;
-                // The list: each style's text count and lock; "Styles in
-                // use" keeps the used ones, the current and the selected.
-                let current = &doc.header.current_text_style_name;
-                let (listed, rows): (Vec<String>, Vec<_>) = doc
-                    .text_styles
-                    .iter()
-                    .map(|s| {
-                        let count = self
-                            .textstyle_counts
-                            .get(&s.name.to_ascii_lowercase())
-                            .copied()
-                            .unwrap_or(0);
-                        let row = crate::ui::style::style_manager::StyleRow {
-                            count,
-                            locked: s.xref_dependent || s.name.contains('|'),
-                        };
-                        (s.name.clone(), row)
-                    })
-                    .filter(|(name, row)| {
-                        !self.textstyle_in_use_only
-                            || row.count > 0
-                            || name.eq_ignore_ascii_case(current)
-                            || name.eq_ignore_ascii_case(&self.textstyle_selected)
-                    })
-                    .unzip();
-                // The preview draws the draft as the drawing would draw it.
-                let resolved =
-                    crate::entities::text_support::resolve_text_style_record(&edited, doc);
-                let ttf = !edited.true_type_font.trim().is_empty();
-                let mut font_label = if ttf {
-                    edited.true_type_font.clone()
-                } else {
-                    edited.font_file.clone()
-                };
-                if draft.big_font_on && !edited.big_font_file.trim().is_empty() {
-                    font_label = format!("{font_label} + {}", edited.big_font_file);
-                }
-                if edited.height > 0.0 {
-                    let mode = if edited.annotative {
-                        crate::t!("Paper height")
-                    } else {
-                        crate::t!("Drawing height")
-                    };
-                    let height = crate::entities::common::format_length(edited.height);
-                    font_label = format!("{font_label} · {mode} {height}");
-                }
-                let preview = crate::ui::style::textstyle::Preview {
-                    font: resolved.font_name,
-                    width_factor: if resolved.is_backward {
-                        -resolved.width_factor
-                    } else {
-                        resolved.width_factor
-                    },
-                    oblique: resolved.oblique_angle,
-                    upside_down: resolved.is_upside_down,
-                    vertical: resolved.is_vertical && !ttf,
-                    text: if self.textstyle_sample.trim().is_empty() {
-                        crate::ui::style::textstyle::default_sample(draft.big_font_on)
-                            .to_string()
-                    } else {
-                        self.textstyle_sample.clone()
-                    },
-                    caption: font_label,
-                };
+                let (listed, rows) = self.textstyle_list();
+                let preview = self.textstyle_preview(&edited);
                 let usage = crate::app::text_style_users::Usage::of(&self.textstyle_users);
                 let compare_opts: Vec<String> = styles
                     .iter()

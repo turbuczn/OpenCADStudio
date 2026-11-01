@@ -7966,10 +7966,6 @@ impl OpenCADStudio {
                 self.mtext_object_style(s);
                 Task::none()
             }
-            Message::MTextFont(f) => {
-                self.mtext_apply_font(&f);
-                Task::none()
-            }
             Message::MTextFontPicker(event) => {
                 let doc = &self.tabs[self.active_tab].scene.document;
                 let picked = self
@@ -13055,6 +13051,9 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::TextStyleDialogSelect(name) => {
+                if self.style_editor_blocked(crate::app::StyleKind::Text) {
+                    return Task::none();
+                }
                 self.flush_textstyle_draft();
                 let i = self.active_tab;
                 self.textstyle_selected = name;

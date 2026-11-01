@@ -7,7 +7,7 @@
 //! ATTDEF store their own width and oblique angle, and every text stores its
 //! height; those are written here when they equal the style's old value. An
 //! MTEXT draws with the style's width and oblique unless it carries a
-//! whole-text `\W` / `\Q` code.
+//! whole-text `\W` / `\Q` code, and keeps its height under a whole-text `\H`.
 
 use codec::entities::EntityType;
 use codec::tables::TextStyle;
@@ -208,11 +208,17 @@ pub(super) fn users_by_style(doc: &Document) -> FxHashMap<String, Vec<TextUser>>
                         Held::FromStyle
                     }
                 };
+                // A whole-text `\H` is the text's own height, whatever the
+                // stored one says.
+                let height = match code('H') {
+                    Held::Own => Held::Own,
+                    _ => Held::Stored(t.height),
+                };
                 push(
                     &t.style,
                     TextKind::MText,
                     None,
-                    Held::Stored(t.height),
+                    height,
                     code('W'),
                     code('Q'),
                 )

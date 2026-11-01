@@ -64,6 +64,32 @@ impl NumberField {
     }
 }
 
+/// The regular face file of common TrueType families, as other programs
+/// find them. A style stores the file; the family alone is not enough.
+const USUAL_FACE_FILES: &[(&str, &str)] = &[
+    ("Arial", "arial.ttf"),
+    ("Arial Narrow", "arialn.ttf"),
+    ("Calibri", "calibri.ttf"),
+    ("Century Gothic", "gothic.ttf"),
+    ("Consolas", "consola.ttf"),
+    ("Courier New", "cour.ttf"),
+    ("Georgia", "georgia.ttf"),
+    ("ISOCPEUR", "isocpeur.ttf"),
+    ("Segoe UI", "segoeui.ttf"),
+    ("Tahoma", "tahoma.ttf"),
+    ("Times New Roman", "times.ttf"),
+    ("Trebuchet MS", "trebuc.ttf"),
+    ("Verdana", "verdana.ttf"),
+];
+
+/// The usual face file of `family`, if it is a common one.
+fn usual_face_file(family: &str) -> Option<&'static str> {
+    USUAL_FACE_FILES
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(family.trim()))
+        .map(|(_, file)| *file)
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct TextStyleDraft {
     /// The selected style with its exact stored values. Toggles and font
@@ -131,12 +157,14 @@ impl TextStyleDraft {
     }
 
     /// Switch to a TrueType family. The font file names the family's regular
-    /// face (bold and italic are flags), or stays empty when no installed file
-    /// is known. Vertical text and a big font apply to stroke fonts only.
+    /// face (bold and italic are flags): the installed file, else the usual
+    /// file of a common family (the web has no installed files), else empty.
+    /// Vertical text and a big font apply to stroke fonts only.
     pub(super) fn pick_system_font(&mut self, family: String) {
         let style = &mut self.style;
-        style.font_file =
-            crate::scene::text::sysfont::face_file(&family, false, false).unwrap_or_default();
+        style.font_file = crate::scene::text::sysfont::face_file(&family, false, false)
+            .or_else(|| usual_face_file(&family).map(str::to_string))
+            .unwrap_or_default();
         style.true_type_font = family;
         style.is_vertical = false;
         style.big_font_file.clear();
@@ -236,6 +264,16 @@ mod tests {
         assert!(draft.resolved().big_font_file.is_empty());
         draft.toggle_big_font();
         assert_eq!(draft.resolved(), stored);
+    }
+
+    #[test]
+    fn a_common_family_names_its_usual_file_and_another_none() {
+        assert_eq!(usual_face_file("Times New Roman"), Some("times.ttf"));
+        assert_eq!(usual_face_file(" arial "), Some("arial.ttf"));
+        assert_eq!(usual_face_file("Noto Sans"), None);
+        for (family, file) in USUAL_FACE_FILES {
+            assert!(file.ends_with(".ttf"), "{family}");
+        }
     }
 
     #[test]

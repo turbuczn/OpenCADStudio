@@ -203,7 +203,11 @@ fn drawing_fonts(doc: &Document) -> Vec<(FontChoice, bool)> {
         } else {
             let file = crate::io::font_repo::font_key(&style.font_file);
             let missing = crate::io::font_repo::shx_file_missing(&style.font_file, base);
-            (FontChoice::of_name(&file), missing)
+            match FontChoice::of_name(&file) {
+                // A bare stroke name (`txt`) is read as its SHX file.
+                FontChoice::Stroke(name) => (FontChoice::Stroke(stroke_file(&name)), missing),
+                other => (other, missing),
+            }
         };
         if !fonts.iter().any(|(known, _)| known.same_font(&font.0)) {
             fonts.push(font);
