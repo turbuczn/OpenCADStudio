@@ -46,6 +46,11 @@ mtext-object-origin = MTEXT
     .custom = Custom
     .mixed = Mixed
     .reset-to-style = 스타일로 재설정 (__ocs_fmt_0__)
+    .new-text-style = 새 문자 스타일
+    .new-style-from-selection = 선택 항목에서 새 스타일…
+    .update-style-from-selection = 선택 항목에서 "__ocs_fmt_0__" 업데이트
+    .text-style-manager-dialog = 문자 스타일 관리자…
+    .style-updated = 스타일 '__ocs_fmt_0__'가 업데이트되었습니다.
 
 mtext-commit-errors = MTEXT
     .numeric = MTEXT: enter a valid height, width factor and rotation before saving.

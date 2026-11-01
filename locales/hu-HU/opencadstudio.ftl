@@ -46,6 +46,11 @@ mtext-object-origin = MTEXT
     .custom = Egyedi
     .mixed = Vegyes
     .reset-to-style = Vissza a stílushoz (__ocs_fmt_0__)
+    .new-text-style = Új szövegstílus
+    .new-style-from-selection = Új stílus a kijelölésből…
+    .update-style-from-selection = „__ocs_fmt_0__” frissítése a kijelölésből
+    .text-style-manager-dialog = Szövegstílus-kezelő…
+    .style-updated = A „__ocs_fmt_0__” stílus frissítve.
 
 mtext-commit-errors = MTEXT
     .numeric = MTEXT: mentéshez érvényes magasság, szélességi tényező és forgatás szükséges.

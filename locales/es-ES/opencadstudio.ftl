@@ -46,6 +46,11 @@ mtext-object-origin = MTEXT
     .custom = Custom
     .mixed = Mixed
     .reset-to-style = Restablecer al estilo (__ocs_fmt_0__)
+    .new-text-style = Nuevo estilo de texto
+    .new-style-from-selection = Nuevo estilo a partir de la selección…
+    .update-style-from-selection = Actualizar «__ocs_fmt_0__» a partir de la selección
+    .text-style-manager-dialog = Administrador de estilos de texto…
+    .style-updated = Se actualizó el estilo «__ocs_fmt_0__».
 
 mtext-commit-errors = MTEXT
     .numeric = MTEXT: enter a valid height, width factor and rotation before saving.

@@ -277,7 +277,7 @@ impl OpenCADStudio {
     }
 
     /// First free `{base} ({n})` name for a copy / disambiguated entry.
-    fn unique_suffixed_name(&self, kind: StyleKind, base: &str) -> String {
+    pub(super) fn unique_suffixed_name(&self, kind: StyleKind, base: &str) -> String {
         (1u32..)
             .map(|n| format!("{base} ({n})"))
             .find(|c| !self.style_exists(kind, c))
@@ -1077,6 +1077,8 @@ impl OpenCADStudio {
             self.tabs[i].dirty = stage.dirty_at_open;
         }
         self.sync_ribbon_styles();
+        // An open MTEXT editor shows its style's new values.
+        self.mtext_follow_style_table();
         // Re-baseline so further edits in the still-open window stage afresh.
         // Captured after the ribbon sync, which can move the ribbon's active
         // styles: a second untouched Apply must find nothing changed.

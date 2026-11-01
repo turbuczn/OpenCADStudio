@@ -29,10 +29,12 @@ mod raw_operations;
 mod raw_span;
 mod raw_stack;
 mod raw_style;
+mod style_from;
 pub(in crate::app) use raw_edit::FormatState;
 pub(in crate::app) use raw_list::ListKind;
 pub(in crate::app) use raw_stack::{FractionPart, Script};
 pub(in crate::app) use raw_style::{sets_whole_text, ValueOrigin};
+pub(in crate::app) use style_from::NEW_STYLE_NAME_ID;
 
 /// Character-level format toggles applied to the current selection by the
 /// toolbar. Each maps to a DXF MTEXT inline code understood by the renderer
@@ -81,6 +83,10 @@ pub enum EditorMenu {
     Background,
     /// The drawing direction.
     Position,
+    /// The style menu beside the Style list.
+    Style,
+    /// The name of a new style from the selection, opened from the style menu.
+    NewStyle,
 }
 
 /// `pick_list`-friendly wrapper for the 9 attachment points.
@@ -219,6 +225,8 @@ pub struct MTextEditorState {
     pub(super) field_host: Option<raw_field::FieldHost>,
     /// The Fraction panel's parts while it is open.
     pub fraction: Option<raw_stack::FractionDraft>,
+    /// The name typed for a new style from the selection.
+    pub new_style_name: String,
     /// B / I / U / overline / S switched with nothing selected, for the
     /// next typed text. Any caret move or new selection drops it.
     pub(super) typing_format: raw_edit::TypingFormat,
@@ -276,6 +284,7 @@ impl MTextEditorState {
             font_picker: Default::default(),
             menu: None,
             fraction: None,
+            new_style_name: String::new(),
             field_host: None,
             mask_draft: None,
             direction: None,

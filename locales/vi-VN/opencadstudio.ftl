@@ -46,6 +46,11 @@ mtext-object-origin = MTEXT
     .custom = Custom
     .mixed = Mixed
     .reset-to-style = Đặt lại theo kiểu (__ocs_fmt_0__)
+    .new-text-style = Kiểu chữ mới
+    .new-style-from-selection = Kiểu mới từ vùng chọn…
+    .update-style-from-selection = Cập nhật “__ocs_fmt_0__” từ vùng chọn
+    .text-style-manager-dialog = Trình quản lý Kiểu chữ…
+    .style-updated = Đã cập nhật kiểu '__ocs_fmt_0__'.
 
 mtext-commit-errors = MTEXT
     .numeric = MTEXT: enter a valid height, width factor and rotation before saving.

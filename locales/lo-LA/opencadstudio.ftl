@@ -46,6 +46,11 @@ mtext-object-origin = MTEXT
     .custom = Custom
     .mixed = Mixed
     .reset-to-style = ຕັ້ງຄືນຕາມຮູບແບບ (__ocs_fmt_0__)
+    .new-text-style = ຮູບແບບຂໍ້ຄວາມໃໝ່
+    .new-style-from-selection = ຮູບແບບໃໝ່ຈາກສິ່ງທີ່ເລືອກ…
+    .update-style-from-selection = ອັບເດດ "__ocs_fmt_0__" ຈາກສິ່ງທີ່ເລືອກ
+    .text-style-manager-dialog = ຕົວຈັດການຮູບແບບຂໍ້ຄວາມ…
+    .style-updated = ອັບເດດຮູບແບບ '__ocs_fmt_0__' ແລ້ວ.
 
 mtext-commit-errors = MTEXT
     .numeric = MTEXT: enter a valid height, width factor and rotation before saving.

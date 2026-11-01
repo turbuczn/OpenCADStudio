@@ -7989,6 +7989,39 @@ impl OpenCADStudio {
                 self.mtext_reset_to_style(field);
                 Task::none()
             }
+            Message::MTextNewStyleOpen => self.mtext_new_style_open(),
+            Message::MTextNewStyleName(name) => {
+                if let Some(ed) = self.mtext_editor.as_mut() {
+                    ed.new_style_name = name;
+                }
+                Task::none()
+            }
+            Message::MTextNewStyleCreate => {
+                let name = self
+                    .mtext_editor
+                    .as_ref()
+                    .map(|ed| ed.new_style_name.clone());
+                if let Some(name) = name {
+                    self.mtext_style_from_selection(Some(name));
+                }
+                Task::none()
+            }
+            Message::MTextUpdateStyleFromSelection => {
+                self.mtext_style_from_selection(None);
+                Task::none()
+            }
+            Message::MTextStyleManager => {
+                let style = self.mtext_editor.as_ref().map(|ed| ed.style.clone());
+                let task = self.on_text_style_dialog_open();
+                let i = self.active_tab;
+                if let Some(style) =
+                    style.filter(|s| self.tabs[i].scene.document.text_styles.get(s).is_some())
+                {
+                    self.textstyle_selected = style;
+                    self.load_textstyle_draft(i);
+                }
+                task
+            }
             Message::MTextOblique(s) => {
                 self.mtext_apply_span_number("oblique", s);
                 Task::none()

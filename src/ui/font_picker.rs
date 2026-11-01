@@ -79,7 +79,7 @@ impl FontChoice {
 
     /// Whether `self` and `other` name the same font, whichever way the
     /// name is spelled.
-    fn same_font(&self, other: &FontChoice) -> bool {
+    pub fn same_font(&self, other: &FontChoice) -> bool {
         match (self, other) {
             (FontChoice::StyleDefault, FontChoice::StyleDefault) => true,
             (FontChoice::Stroke(a), FontChoice::Stroke(b)) => {
@@ -89,6 +89,19 @@ impl FontChoice {
             _ => false,
         }
     }
+}
+
+/// The SHX file a text style stores for a stroke font: the file itself, a
+/// bundled font's file by its shown name, or the name with `.shx` added.
+pub fn stroke_file(name: &str) -> String {
+    let name = name.trim();
+    if crate::scene::text::lff::is_shx_name(name) {
+        return name.to_string();
+    }
+    STROKE_FONTS
+        .iter()
+        .find(|(label, file)| names_stroke_font(name, label, file))
+        .map_or_else(|| format!("{name}.shx"), |(_, file)| file.to_string())
 }
 
 fn stem(name: &str) -> String {

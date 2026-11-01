@@ -22,6 +22,8 @@ pub(in crate::app) struct ObjectStyle {
     /// Bold/italic the style's TrueType face supplies, i.e. what a run
     /// without its own `|b`/`|i` flags shows once the object font is reset.
     pub font_flags: (bool, bool),
+    /// An external reference's style, which cannot be changed here.
+    pub read_only: bool,
 }
 
 /// Whether `raw` sets `code` (`\W`, `\Q`, …) for all of its text, so the
@@ -122,12 +124,13 @@ impl ObjectStyle {
                     let flags = s.true_type_font_flags;
                     (flags & TTF_FLAG_BOLD != 0, flags & TTF_FLAG_ITALIC != 0)
                 }),
+            read_only: style.is_some_and(|s| s.xref_dependent || s.name.contains('|')),
         }
     }
 }
 
 /// The width the text draws with: the style's width times the object `\W`.
-fn base_width(raw: &str, style: f64) -> Result<f64, EditError> {
+pub(super) fn base_width(raw: &str, style: f64) -> Result<f64, EditError> {
     let factor = leading_controls(raw, 'W')
         .last()
         .map_or(Ok(1.), |r| width_code(raw, r))?;
@@ -137,7 +140,7 @@ fn base_width(raw: &str, style: f64) -> Result<f64, EditError> {
 /// Set the object width to `target` (the style's own with `None`). Every
 /// other `\W` keeps its ratio to the object width, so the text scales as
 /// one; the object `\W` is written relative to the style's width.
-fn patch_width(raw: &str, style: f64, target: Option<f64>) -> Result<String, EditError> {
+pub(super) fn patch_width(raw: &str, style: f64, target: Option<f64>) -> Result<String, EditError> {
     let index = SourceIndex::new(raw);
     let count = index.validate(false)?;
     let leading = leading_controls(raw, 'W');
@@ -185,7 +188,7 @@ fn font_of(code: &str) -> Option<MTextFont> {
 }
 
 /// The object font: the last font control ahead of the first character.
-fn root_font(raw: &str) -> Option<MTextFont> {
+pub(super) fn root_font(raw: &str) -> Option<MTextFont> {
     let last = leading_controls(raw, 'f').last()?.clone();
     font_of(&raw[last])
 }
@@ -250,7 +253,7 @@ fn follow_object_font(raw: &str, old: &str, new: &str) -> Result<String, EditErr
 /// named font, so it goes back to the style only where every explicit flag
 /// already equals what the style gives; an unknown font field is never
 /// dropped.
-fn patch_font(
+pub(super) fn patch_font(
     raw: &str,
     name: Option<&str>,
     style_flags: (bool, bool),
@@ -295,7 +298,7 @@ pub(super) fn object_controls(raw: &str) -> Vec<Range<usize>> {
 }
 
 /// The value of the whole-text `\Q` or `\T`; `None` without one.
-fn object_number(raw: &str, code: char) -> Option<f64> {
+pub(super) fn object_number(raw: &str, code: char) -> Option<f64> {
     leading_controls(raw, code)
         .last()
         .and_then(|r| raw.get(r.start + 2..r.end.saturating_sub(1)))
@@ -305,7 +308,7 @@ fn object_number(raw: &str, code: char) -> Option<f64> {
 
 /// Replace the whole-text `code` control with `control` (`None` removes it).
 /// A code that formats only part of the text keeps overriding it.
-fn patch_object_control(
+pub(super) fn patch_object_control(
     raw: &str,
     code: char,
     control: Option<String>,
@@ -430,7 +433,7 @@ fn number_text(value: f64) -> String {
 impl crate::app::OpenCADStudio {
     /// Put an object-default change into the source as one undo step; a
     /// refused change leaves everything as it was and says why.
-    fn set_object_source(&mut self, result: Result<String, EditError>) -> bool {
+    pub(super) fn set_object_source(&mut self, result: Result<String, EditError>) -> bool {
         let unlocated = self.unlocated_field_host();
         let Some(ed) = self.mtext_editor.as_mut() else {
             return false;

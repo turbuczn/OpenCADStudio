@@ -659,7 +659,14 @@ fn mtext_editor_content<'a>(
     let width_origin = Some(ed.value_origin("width"));
     let oblique_origin = Some(ed.value_origin("oblique"));
     let row1 = row![
-        labelled(t!("Style"), None, style_pl.into()),
+        labelled(
+            t!("Style"),
+            None,
+            row![style_pl, mtext_menu::style_menu(ed)]
+                .spacing(2)
+                .align_y(iced::Alignment::Center)
+                .into()
+        ),
         resettable(
             "font",
             font_origin,

@@ -58,6 +58,8 @@ mod model_ops;
 mod mtext_editor;
 #[cfg(test)]
 mod mtext_follows_style_tests;
+#[cfg(test)]
+mod mtext_style_from_selection_tests;
 mod navigation;
 #[cfg(test)]
 mod object_isolation_tests;
@@ -4830,6 +4832,17 @@ pub enum Message {
     MTextFontPicker(crate::ui::font_picker::FontPickerEvent),
     /// "Reset to style" on a first-row field (font, height, width, oblique).
     MTextResetToStyle(&'static str),
+    /// Style menu: open the name of a new style from the selection, or from
+    /// its Cancel go back.
+    MTextNewStyleOpen,
+    /// Style menu: the new style's name, as typed.
+    MTextNewStyleName(String),
+    /// Style menu: make the new style from the selection.
+    MTextNewStyleCreate,
+    /// Style menu: update the text's style from the selection.
+    MTextUpdateStyleFromSelection,
+    /// Style menu: open the Text Style Manager on the text's style.
+    MTextStyleManager,
     /// Toolbar oblique-angle field changed.
     MTextOblique(String),
     /// Toolbar width-factor field changed.

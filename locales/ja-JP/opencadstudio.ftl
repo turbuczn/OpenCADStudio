@@ -46,6 +46,11 @@ mtext-object-origin = MTEXT
     .custom = Custom
     .mixed = Mixed
     .reset-to-style = スタイルに戻す (__ocs_fmt_0__)
+    .new-text-style = 新しい文字スタイル
+    .new-style-from-selection = 選択から新しいスタイル…
+    .update-style-from-selection = 選択から「__ocs_fmt_0__」を更新
+    .text-style-manager-dialog = 文字スタイルマネージャー…
+    .style-updated = スタイル '__ocs_fmt_0__' を更新しました。
 
 mtext-commit-errors = MTEXT
     .numeric = MTEXT: enter a valid height, width factor and rotation before saving.

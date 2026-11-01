@@ -46,6 +46,11 @@ mtext-object-origin = MTEXT
     .custom = Custom
     .mixed = Mixed
     .reset-to-style = शैली पर रीसेट करें (__ocs_fmt_0__)
+    .new-text-style = नई टेक्स्ट शैली
+    .new-style-from-selection = चयन से नई शैली…
+    .update-style-from-selection = चयन से "__ocs_fmt_0__" अपडेट करें
+    .text-style-manager-dialog = टेक्स्ट शैली प्रबंधक…
+    .style-updated = शैली '__ocs_fmt_0__' अपडेट की गई।
 
 mtext-commit-errors = MTEXT
     .numeric = MTEXT: enter a valid height, width factor and rotation before saving.

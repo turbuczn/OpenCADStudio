@@ -46,6 +46,11 @@ mtext-object-origin = MTEXT
     .custom = Custom
     .mixed = Mixed
     .reset-to-style = Επαναφορά στο στυλ (__ocs_fmt_0__)
+    .new-text-style = Νέο στυλ κειμένου
+    .new-style-from-selection = Νέο στυλ από την επιλογή…
+    .update-style-from-selection = Ενημέρωση του «__ocs_fmt_0__» από την επιλογή
+    .text-style-manager-dialog = Διαχείριση στυλ κειμένου…
+    .style-updated = Το στυλ '__ocs_fmt_0__' ενημερώθηκε.
 
 mtext-commit-errors = MTEXT
     .numeric = MTEXT: enter a valid height, width factor and rotation before saving.

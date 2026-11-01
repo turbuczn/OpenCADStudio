@@ -46,6 +46,11 @@ mtext-object-origin = MTEXT
     .custom = Custom
     .mixed = Mixed
     .reset-to-style = Stile sıfırla (__ocs_fmt_0__)
+    .new-text-style = Yeni metin stili
+    .new-style-from-selection = Seçimden yeni stil…
+    .update-style-from-selection = "__ocs_fmt_0__" stilini seçimden güncelle
+    .text-style-manager-dialog = Metin Stili Yöneticisi…
+    .style-updated = '__ocs_fmt_0__' stili güncellendi.
 
 mtext-commit-errors = MTEXT
     .numeric = MTEXT: enter a valid height, width factor and rotation before saving.
